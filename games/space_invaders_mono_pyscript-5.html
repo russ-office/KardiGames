@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Космическое нашествие — монохром</title>
+  <style>
+    html, body { height: 100%; margin: 0; background:#000; color:#fff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+    .hud { position: absolute; top: 8px; left: 0; right: 0; text-align:center; pointer-events:none; }
+    .row { display:flex; align-items:center; justify-content:space-between; padding: 0 12px; }
+    .center { flex:1; text-align:center; }
+    .right { min-width: 120px; text-align:right; }
+    #wrap { position: relative; width: min(92vw, 560px); margin: 40px auto; }
+    canvas { width: 100%; height: auto; image-rendering: pixelated; border: 1px solid #444; background:#000; outline:none; }
+    .hint { text-align:center; margin-top:10px; color:#bbb; font-size: 12px;}
+    .mono { color:#fff; }
+    .dbg { position:absolute; bottom:8px; left:12px; color:#555; font-size:11px; }
+  </style>
+
+  <!-- PyScript -->
+  <link rel="stylesheet" href="https://pyscript.net/releases/2024.9.1/core.css"/>
+  <script type="module" src="https://pyscript.net/releases/2024.9.1/core.js"></script>
+</head>
+<body>
+  <div id="wrap">
+    <div class="hud">
+      <div class="row">
+        <div class="center mono" id="lives">♥ ♥ ♥ ♥ ♥</div>
+        <div class="right mono" id="score">СЧЁТ: 0</div>
+      </div>
+    </div>
+    <canvas id="game" width="560" height="700"></canvas>
+    <div class="hint">
+      Управление: ←/→ или A/D — движение, ПРОБЕЛ — выстрел, R — рестарт.
+    </div>
+    <div class="dbg" id="dbg">key: —</div>
+  </div>
+
+  <py-script>
+import asyncio, random
+from js import document, window
+from pyodide.ffi import create_proxy
+
+# Canvas and context
+canvas = document.getElementById("game")
+ctx = canvas.getContext("2d")
+W = canvas.width
+H = canvas.height
+
+dbg = document.getElementById("dbg")
+
+# Grid/levels
+LEVELS = 10
+LEVEL_H = H / LEVELS
+
+# Game state
+STATE_RUNNING = "running"
+STATE_WON     = "won"
+STATE_LOST    = "lost"
+
+# HUD elements
+score_el = document.getElementById("score")
+lives_el = document.getElementById("lives")
+
+# Config
+ALIEN_ROWS = 4
+ALIENS_PER_ROW = 10
+ALIEN_SIZE = 18  # px
+ALIEN_SPACING_X = (W - (ALIENS_PER_ROW * ALIEN_SIZE)) / (ALIENS_PER_ROW + 1)
+ALIEN_Y_START = LEVEL_H * 0.6
+DESCEND_INTERVAL = 5.0
+ENEMY_FIRE_INTERVAL = 1.0
+PLAYER_SPEED = 240.0
+BULLET_SPEED = 420.0
+ENEMY_BULLET_SPEED = 260.0
+EXPLOSION_TIME = 0.22
+MAX_LIVES = 5
+POINTS_PER_KILL = 100
+TOTAL_SCORE_TO_WIN = ALIEN_ROWS * ALIENS_PER_ROW * POINTS_PER_KILL
+
+# Monochrome color
+COLOR = "#fff"
+
+# Entities
+class Player:
+    def __init__(self):
+        self.w = 22
+        self.h = 16
+        self.x = W/2 - self.w/2
+        self.y = (LEVELS-1)*LEVEL_H + (LEVEL_H - self.h)/2
+        self.vx = 0.0
+        self.can_shoot = True
+        self.shoot_cooldown = 0.16
+    
+    def rect(self):
+        return (self.x, self.y, self.w, self.h)
+
+class Bullet:
+    def __init__(self, x, y, vy, friendly=True):
+        self.x = x
+        self.y = y
+        self.r = 3
+        self.vy = vy
+        self.friendly = friendly
+        self.alive = True
+
+class Alien:
+    def __init__(self, gx, gy):
+        self.gx = gx
+        self.gy = gy
+        self.alive = True
+        self.explode_t = 0.0
+
+    def position(self, y_offset):
+        x = ALIEN_SPACING_X + self.gx*(ALIEN_SIZE + ALIEN_SPACING_X)
+        y = ALIEN_Y_START + self.gy*(LEVEL_H) + y_offset
+        return (x, y)
+
+# Initialize game variables
+def make_aliens():
+    return [Alien(col, row) for row in range(ALIEN_ROWS) for col in range(ALIENS_PER_ROW)]
+
+def reset_game():
+    global player, bullets, aliens, score, lives, state, alien_y_offset, last_descend, last_enemy_fire, keys
+    player = Player()
+    bullets = []
+    aliens = make_aliens()
+    score = 0
+    lives = MAX_LIVES
+    state = STATE_RUNNING
+    alien_y_offset = 0.0
+    now = window.performance.now() / 1000.0
+    last_descend = now
+    last_enemy_fire = now
+    keys = {"left": False, "right": False}
+reset_game()
+
+def update_hud():
+    score_el.innerText = f"СЧЁТ: {score}"
+    lives_el.innerText = " ".join(["♥"]*lives + ["·"]*(MAX_LIVES-lives))
+
+def draw_player():
+    x,y,w,h = player.rect()
+    ctx.fillStyle = COLOR
+    ctx.fillRect(x, y+h*0.6, w, h*0.4)
+    ctx.fillRect(x+w*0.4, y, w*0.2, h*0.6)
+
+def draw_alien(x, y):
+    s = ALIEN_SIZE
+    ctx.fillStyle = COLOR
+    ctx.fillRect(x, y, s, s*0.45)
+    ctx.fillRect(x+s*0.2, y+s*0.45, s*0.6, s*0.2)
+    ctx.fillRect(x+s*0.25, y+s*0.65, s*0.12, s*0.35)
+    ctx.fillRect(x+s*0.63, y+s*0.65, s*0.12, s*0.35)
+
+def draw_explosion(x, y):
+    ctx.strokeStyle = COLOR
+    ctx.lineWidth = 2
+    s = ALIEN_SIZE * 0.7
+    ctx.beginPath()
+    ctx.moveTo(x, y); ctx.lineTo(x+s, y+s)
+    ctx.moveTo(x+s, y); ctx.lineTo(x, y+s)
+    ctx.stroke()
+
+def draw_bullet(b):
+    ctx.fillStyle = COLOR
+    ctx.fillRect(b.x-2, b.y-6 if b.friendly else b.y, 4, 6)
+
+def clear():
+    ctx.fillStyle = "#000"
+    ctx.fillRect(0,0,W,H)
+
+def circle_hit_rect(cx, cy, r, rx, ry, rw, rh):
+    closestX = max(rx, min(cx, rx+rw))
+    closestY = max(ry, min(cy, ry+rh))
+    dx = cx - closestX
+    dy = cy - closestY
+    return (dx*dx + dy*dy) <= r*r
+
+# --- Keyboard with proxies ---
+def normalize_code(evt):
+    code = evt.code or ""
+    key = evt.key or ""
+    if not code:
+        if key == " ":
+            code = "Space"
+        elif key in ("ArrowLeft","ArrowRight"):
+            code = key
+        elif key.lower() == "a":
+            code = "KeyA"
+        elif key.lower() == "d":
+            code = "KeyD"
+        elif key.lower() == "r":
+            code = "KeyR"
+    return code
+
+def on_keydown(evt):
+    code = normalize_code(evt)
+    dbg.innerText = f"key: {code} (down)"
+    if code in ("ArrowLeft","ArrowRight","Space","KeyR","KeyA","KeyD"):
+        evt.preventDefault()
+    if state != STATE_RUNNING and code != "KeyR":
+        return
+    if code in ("ArrowLeft","KeyA"):
+        keys["left"] = True
+    elif code in ("ArrowRight","KeyD"):
+        keys["right"] = True
+    elif code == "Space":
+        shoot_player()
+    elif code == "KeyR":
+        reset_game()
+
+def on_keyup(evt):
+    code = normalize_code(evt)
+    dbg.innerText = f"key: {code} (up)"
+    if code in ("ArrowLeft","ArrowRight","Space","KeyR","KeyA","KeyD"):
+        evt.preventDefault()
+    if code in ("ArrowLeft","KeyA"):
+        keys["left"] = False
+    elif code in ("ArrowRight","KeyD"):
+        keys["right"] = False
+
+def on_blur(evt):
+    keys["left"] = False
+    keys["right"] = False
+    dbg.innerText = "key: —"
+
+document.addEventListener("keydown", create_proxy(on_keydown))
+document.addEventListener("keyup", create_proxy(on_keyup))
+window.addEventListener("blur", create_proxy(on_blur))
+
+def shoot_player():
+    global bullets, player
+    if not player.can_shoot:
+        return
+    b = Bullet(player.x + player.w/2, player.y - 2, -BULLET_SPEED, True)
+    bullets.append(b)
+    player.can_shoot = False
+    async def cooldown():
+        await asyncio.sleep(player.shoot_cooldown)
+        player.can_shoot = True
+    asyncio.ensure_future(cooldown())
+
+def enemy_shoot():
+    alive = [a for a in aliens if a.alive]
+    if not alive or state != STATE_RUNNING:
+        return
+    a = random.choice(alive)
+    x,y = a.position(alien_y_offset)
+    b = Bullet(x + ALIEN_SIZE/2, y + ALIEN_SIZE, ENEMY_BULLET_SPEED, False)
+    bullets.append(b)
+
+def force_win():
+    global state, bullets
+    state = STATE_WON
+    # remove enemy bullets and stop player fire cooldown
+    for b in bullets:
+        if not b.friendly:
+            b.alive = False
+
+def check_win_or_lose():
+    global state
+    if state != STATE_RUNNING:
+        return
+    if score >= TOTAL_SCORE_TO_WIN or all(not a.alive for a in aliens):
+        force_win()
+        return
+    for a in aliens:
+        if not a.alive: 
+            continue
+        _, y = a.position(alien_y_offset)
+        if y + ALIEN_SIZE >= (LEVELS-1)*LEVEL_H:
+            state = STATE_LOST
+            return
+
+def draw_end_message():
+    ctx.fillStyle = COLOR
+    ctx.font = "24px monospace"
+    ctx.textAlign = "center"
+    if state == STATE_WON:
+        ctx.fillText("Да пребудет с тобой Сила !!!", W/2, H/2)
+    elif state == STATE_LOST:
+        ctx.fillText("Слава Генералу Гривусу !!", W/2, H/2)
+
+async def game_loop():
+    global alien_y_offset, last_descend, last_enemy_fire, score, lives, state
+
+    prev = window.performance.now() / 1000.0
+    update_hud()
+
+    while True:
+        now = window.performance.now() / 1000.0
+        dt = now - prev
+        prev = now
+
+        clear()
+
+        # Stop reacting when not running
+        allow_timers = (state == STATE_RUNNING)
+
+        # Input -> player velocity
+        player.vx = 0.0
+        if allow_timers:
+            if keys["left"]:
+                player.vx -= PLAYER_SPEED
+            if keys["right"]:
+                player.vx += PLAYER_SPEED
+
+        # Update player
+        player.x += player.vx * dt
+        player.x = max(6, min(W - player.w - 6, player.x))
+
+        # Timers: alien descend & fire
+        if allow_timers and (now - last_descend) >= DESCEND_INTERVAL:
+            last_descend = now
+            alien_y_offset += LEVEL_H
+
+        if allow_timers and (now - last_enemy_fire) >= ENEMY_FIRE_INTERVAL:
+            last_enemy_fire = now
+            enemy_shoot()
+
+        # Update bullets
+        for b in bullets:
+            b.y += b.vy * dt
+            if b.y < -10 or b.y > H+10:
+                b.alive = False
+
+        # Collisions
+        if allow_timers:
+            for b in [bb for bb in bullets if bb.alive and bb.friendly]:
+                for a in aliens:
+                    if not a.alive:
+                        continue
+                    x, y = a.position(alien_y_offset)
+                    if circle_hit_rect(b.x, b.y, b.r, x, y, ALIEN_SIZE, ALIEN_SIZE):
+                        a.alive = False
+                        a.explode_t = EXPLOSION_TIME
+                        b.alive = False
+                        score += POINTS_PER_KILL
+                        update_hud()
+                        break
+
+            px, py, pw, ph = player.rect()
+            for b in [bb for bb in bullets if bb.alive and not bb.friendly]:
+                if circle_hit_rect(b.x, b.y, b.r, px, py, pw, ph) and state == STATE_RUNNING:
+                    b.alive = False
+                    lives -= 1
+                    update_hud()
+                    if lives <= 0:
+                        state = STATE_LOST
+
+        # Draw aliens
+        for a in aliens:
+            if not a.alive:
+                if a.explode_t > 0:
+                    x, y = a.position(alien_y_offset)
+                    draw_explosion(x, y)
+                    a.explode_t -= dt
+                continue
+            x, y = a.position(alien_y_offset)
+            draw_alien(x, y)
+
+        # Draw player and bullets
+        draw_player()
+        for b in bullets:
+            if b.alive:
+                draw_bullet(b)
+
+        bullets[:] = [bb for bb in bullets if bb.alive]
+
+        # Win/lose checks
+        check_win_or_lose()
+
+        if state != STATE_RUNNING:
+            draw_end_message()
+
+        # Optional level grid
+        ctx.strokeStyle = "#111"
+        ctx.lineWidth = 1
+        for i in range(1, LEVELS):
+            y = i * LEVEL_H
+            ctx.beginPath()
+            ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke()
+
+        await asyncio.sleep(0)  # yield to browser
+
+# Start the loop
+asyncio.ensure_future(game_loop())
+  </py-script>
+</body>
+</html>

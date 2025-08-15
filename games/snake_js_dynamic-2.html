@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Snake — монохром (динамика скорости и поля)</title>
+  <style>
+    html, body { background:#000; color:#fff; margin:0; height:100%; }
+    .wrap { display:flex; align-items:center; justify-content:center; height:100%; }
+    canvas { background:#000; display:block; image-rendering: pixelated; }
+    .hud { position:fixed; left:8px; bottom:8px; font:12px/1.2 ui-monospace, Menlo, Consolas, monospace; opacity:.75;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="game" width="640" height="480" aria-label="Snake game canvas"></canvas>
+  </div>
+  <div class="hud">Управление: стрелки. Перезапуск: R</div>
+<script>
+(()=>{
+  const CELL=16,CANVAS_W=640,CANVAS_H=480,COLS=(CANVAS_W/CELL|0),ROWS=(CANVAS_H/CELL|0);
+  const MIN_DOTS=5,INITIAL_SPEED_MS=90,SPEED_FACTOR_PER_GROW=0.95,SHRINK_PERIM_FACTOR=0.95,HUD_W=90,HUD_H=28,MIN_DELAY_MS=24;
+  const canvas=document.getElementById('game');const ctx=canvas.getContext('2d');
+
+  function rndInt(a,b){return (Math.random()*(b-a)+a)|0}function now(){return performance.now()}
+  function hudRectCells(){const gx0=Math.floor((CANVAS_W-HUD_W)/CELL),gy0=0,gx1=Math.ceil(CANVAS_W/CELL),gy1=Math.ceil(HUD_H/CELL);return{gx0,gy0,gx1,gy1}}
+  function drawHUDLength(len){ctx.font='20px ui-monospace';ctx.fillStyle='#fff';const t=String(len);const x=CANVAS_W-(HUD_W-10),y=22;ctx.fillText(t,x,y)}
+
+  class Game{
+    constructor(){this.reset()}
+    reset(){this.dir={x:1,y:0};this.pending={x:1,y:0};this.snake=[];this.initialLen=5;this.speedDelay=INITIAL_SPEED_MS;this.lastStep=now();
+      this.shrinkLevel=0;this.scale=1.0;const cx=(COLS/2|0),cy=(ROWS/2|0);for(let i=0;i<this.initialLen;i++)this.snake.push({x:cx-i,y:cy});
+      this.alive=true;this.exploding=false;this.msgUntil=0;this.particles=[];this.dots=new Set();this.ensureDots(true)}
+    currentBounds(){const s=this.scale,innerW=Math.max(8,Math.floor(COLS*s)),innerH=Math.max(8,Math.floor(ROWS*s));
+      const L=Math.floor((COLS-innerW)/2),T=Math.floor((ROWS-innerH)/2),R=(COLS-1-L),B=(ROWS-1-T);
+      return{L,R,T,B,usableX0:L+1,usableX1:(COLS-1-L)-1,usableY0:T+1,usableY1:(ROWS-1-T)-1}}
+    drawBorder(){const b=this.currentBounds();const x=b.L*CELL+2,y=b.T*CELL+2,w=(b.R-b.L)*CELL-4,h=(b.B-b.T)*CELL-4;ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.strokeRect(x,y,w,h)}
+    key(k){if(!this.alive&&!this.exploding){if(k==='r'||k==='R')this.reset();return}
+      const d=this.dir;if(k==='ArrowUp'&&d.y!==1)this.pending={x:0,y:-1};else if(k==='ArrowDown'&&d.y!==-1)this.pending={x:0,y:1};
+      else if(k==='ArrowLeft'&&d.x!==1)this.pending={x:-1,y:0};else if(k==='ArrowRight'&&d.x!==-1)this.pending={x:1,y:0};else if(k==='r'||k==='R')this.reset()}
+    snakeBBox(){let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9;for(const s of this.snake){if(s.x<minX)minX=s.x;if(s.x>maxX)maxX=s.x;if(s.y<minY)minY=s.y;if(s.y>maxY)maxY=s.y}
+      return{minX,maxX,minY,maxY}}
+    tryShrinkIfNeeded(){const k=Math.floor((this.snake.length-this.initialLen)/10);if(k<=this.shrinkLevel)return;
+      let s=this.scale*SHRINK_PERIM_FACTOR;for(let guard=0;guard<10;guard++){const innerW=Math.max(8,Math.floor(COLS*s)),innerH=Math.max(8,Math.floor(ROWS*s));
+        const L=Math.floor((COLS-innerW)/2),T=Math.floor((ROWS-innerH)/2),R=(COLS-1-L),B=(ROWS-1-T),bb=this.snakeBBox();
+        const fits=(bb.minX>L&&bb.maxX<R&&bb.minY>T&&bb.maxY<B);if(fits){this.scale=s;this.shrinkLevel=k;this.reseedDotsAfterShrink();return}
+        s=(s+this.scale)/2;if(Math.abs(s-this.scale)<0.001)break}}
+    reseedDotsAfterShrink(){const b=this.currentBounds();const keep=new Set();for(const key of this.dots){const [x,y]=key.split(',').map(Number);
+        if(x>=b.usableX0&&x<=b.usableX1&&y>=b.usableY0&&y<=b.usableY1)keep.add(key)}this.dots=keep;this.ensureDots(true)}
+    ensureDots(force=false){const b=this.currentBounds(),hud=hudRectCells(),occ=new Set(this.snake.map(s=>`${s.x},${s.y}`));
+      while(this.dots.size<MIN_DOTS||force){if(this.dots.size>=MIN_DOTS)break;const x=rndInt(b.usableX0,b.usableX1+1),y=rndInt(b.usableY0,b.usableY1+1);
+        if(occ.has(`${x},${y}`))continue;if(x>=hud.gx0&&x<hud.gx1&&y>=hud.gy0&&y<hud.gy1)continue;this.dots.add(`${x},${y}`)}}
+    step(ts){if(!this.alive&&!this.exploding)return;if(this.alive){if(ts-this.lastStep<this.speedDelay)return;this.lastStep=ts;
+        this.dir=this.pending;const head=this.snake[0],nx=head.x+this.dir.x,ny=head.y+this.dir.y,b=this.currentBounds();
+        if(nx<=b.L||nx>=b.R||ny<=b.T||ny>=b.B)return this.gameOver();if(this.snake.some(s=>s.x===nx&&s.y===ny))return this.gameOver();
+        this.snake.unshift({x:nx,y:ny});const key=`${nx},${ny}`;if(this.dots.has(key)){this.dots.delete(key);
+          this.speedDelay=Math.max(MIN_DELAY_MS,this.speedDelay*SPEED_FACTOR_PER_GROW);this.tryShrinkIfNeeded()}else this.snake.pop();this.ensureDots()}
+      else{const alive=[];for(const p of this.particles){p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life>0)alive.push(p)}this.particles=alive;if(!alive.length)this.exploding=false}}
+    gameOver(){this.alive=false;this.exploding=true;this.msgUntil=now()+5000;this.particles=[];
+      for(const s of this.snake){const px=s.x*CELL+CELL/2,py=s.y*CELL+CELL/2;this.particles.push({x:px,y:py,vx:(Math.random()*2.4-1.2),vy:(Math.random()*2.4-1.2),life:(Math.random()*30+20)|0})}}
+    draw(){ctx.fillStyle='#000';ctx.fillRect(0,0,canvas.width,canvas.height);this.drawBorder();
+      ctx.fillStyle='#fff';for(const key of this.dots){const [x,y]=key.split(',').map(Number);const px=x*CELL,py=y*CELL,s=Math.max(2,(CELL/3)|0);ctx.fillRect(px+(CELL-s)/2,py+(CELL-s)/2,s,s)}
+      if(this.alive){for(const seg of this.snake)ctx.fillRect(seg.x*CELL,seg.y*CELL,CELL,CELL)}else{for(const p of this.particles)ctx.fillRect(p.x,p.y,2,2);
+        if(now()<this.msgUntil){ctx.font='28px ui-monospace';const t='Ну все, капец!',w=ctx.measureText(t).width;ctx.fillText(t,(CANVAS_W-w)/2,CANVAS_H/2)}}
+      drawHUDLength(this.snake.length)}}
+  const game=new Game();
+  window.addEventListener('keydown',e=>{const keys=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','r','R'];if(keys.includes(e.key))e.preventDefault();game.key(e.key)});
+  function loop(ts){game.step(ts);game.draw();requestAnimationFrame(loop)}requestAnimationFrame(loop);
+})();</script>
+</body>
+</html>

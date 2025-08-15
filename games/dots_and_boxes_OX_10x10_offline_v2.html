@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dots & Boxes — O/X (Offline)</title>
+  <style>
+    :root{
+      --bg:#0f0f12;          /* монохромный фон */
+      --grid:#55595f;        /* сетка/нейтральные линии */
+      --dot:#e8e8ef;         /* точки */
+      --hover:#ffffff;       /* ПОДСВЕТКА ребра — белая, контрастная */
+      --o:#4da3ff;           /* O — синий */
+      --x:#ffa04d;           /* X — оранжевый */
+      --text:#eaeaf2;        /* базовый текст */
+      --muted:#a9acb3;
+      --panel:#17181d;
+      --accent:#2a2d33;
+      --good:#00c853;        /* для тестов */
+      --bad:#ff5252;         /* для тестов */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .wrap{display:grid;grid-template-rows:auto 1fr auto;min-height:100%}
+    header{padding:10px 14px;border-bottom:1px solid var(--accent);display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .controls select,.controls button{background:var(--panel);border:1px solid var(--accent);color:var(--text);padding:8px 10px;border-radius:10px}
+    .controls button{cursor:pointer}
+    .controls button:hover{border-color:var(--muted)}
+    .controls select:disabled{opacity:.45;color:var(--muted);background:#111318;border-color:#2a2d33;pointer-events:none}
+    main{display:grid;grid-template-columns:320px 1fr;gap:16px;padding:16px}
+    @media (max-width:980px){main{grid-template-columns:1fr}}
+    .side{background:var(--panel);border:1px solid var(--accent);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px}
+    .card{border:1px solid var(--accent);border-radius:12px;padding:10px}
+    .label{font-size:12px;color:var(--muted);margin-bottom:6px}
+    .scoreSplit{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .scoreBox{border-radius:12px;padding:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:84px;border:1px solid var(--accent)}
+    .scoreBox.o{background:var(--o);color:var(--bg)}
+    .scoreBox.x{background:var(--x);color:var(--bg)}
+    .scoreBox .who{font-size:12px;opacity:0.9;margin-bottom:4px}
+    .scoreBox .points{font-size:30px;font-weight:900;letter-spacing:0.5px}
+    .turnCard{border:1px solid var(--accent);border-radius:12px;padding:6px}
+    .turnBig{height:120px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:56px;letter-spacing:1px}
+    .board{background:var(--panel);border:1px solid var(--accent);border-radius:16px;display:flex;align-items:center;justify-content:center;position:relative}
+    canvas{width:min(88vmin,860px);height:min(88vmin,860px);display:block;touch-action:manipulation}
+    footer{padding:10px 14px;border-top:1px solid var(--accent);display:flex;gap:12px;justify-content:space-between;align-items:center;font-size:14px;color:var(--muted)}
+    .status{color:var(--text)}
+    .test-pass{color:var(--good)}
+    .test-fail{color:var(--bad)}
+    details{background:#14161b;border:1px solid var(--accent);padding:8px 10px;border-radius:10px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="controls">
+        <label>Режим:
+          <select id="mode">
+            <option value="pvp">Human vs Human</option>
+            <option value="pvb">Human vs Bot</option>
+          </select>
+        </label>
+        <label>Бот:
+          <select id="botLevel" title="Доступно в режиме Human vs Bot">
+            <option value="easy">Лёгкий</option>
+            <option value="medium" selected>Средний</option>
+            <option value="hard">Сложный</option>
+          </select>
+        </label>
+        <label>Первым ходит:
+          <select id="firstPlayer">
+            <option value="O" selected>O (синий)</option>
+            <option value="X">X (оранжевый)</option>
+          </select>
+        </label>
+        <button id="newGame">Новая игра</button>
+        <button id="undoBtn">Отмена хода</button>
+        <button id="runTests">Проверка</button>
+      </div>
+    </header>
+
+    <main>
+      <aside class="side">
+        <div class="card">
+          <div class="label">Счёт</div>
+          <div class="scoreSplit">
+            <div class="scoreBox o">
+              <div class="who">O — синий</div>
+              <div id="scoreO" class="points">0</div>
+            </div>
+            <div class="scoreBox x">
+              <div class="who">X — оранжевый</div>
+              <div id="scoreX" class="points">0</div>
+            </div>
+          </div>
+        </div>
+        <div class="card turnCard">
+          <div class="label">Ход</div>
+          <div id="turnBig" class="turnBig"><span id="turnWho">O</span></div>
+        </div>
+        <div class="card">
+          <div class="label">Подсказки</div>
+          <div>• Кликните по ребру между точками, чтобы поставить линию.<br>• Замкнув квадрат, вы получаете очко и ещё один ход.<br>• «Отмена хода» откатывает один последний ход (включая ходы бота).</div>
+        </div>
+        <div class="card">
+          <div class="label">Тесты (самопроверка)</div>
+          <details>
+            <summary>Результаты <span id="testSummary" class="test-pass"></span></summary>
+            <div id="testLog" style="white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace"></div>
+          </details>
+        </div>
+      </aside>
+
+      <section class="board">
+        <canvas id="board" width="1000" height="1000"></canvas>
+      </section>
+    </main>
+
+    <footer>
+      <div class="status" id="status">Готово.</div>
+      <div>Dots & Boxes · Offline · v2.0</div>
+    </footer>
+  </div>
+
+  <!-- Полностью оффлайн JS-реализация (без внешних зависимостей) -->
+  <script>
+  (function(){
+    'use strict';
+    // ====== Config ======
+    const N_POINTS = 10;
+    const DOT_R = 4;
+    const LINE_W = 6;
+    const HIT_PAD_MIN = 14;
+    const COLOR_BG = getCss('--bg');
+    const COLOR_GRID = getCss('--grid');
+    const COLOR_DOT = getCss('--dot');
+    const COLOR_HOVER = getCss('--hover');
+    const COLOR_O = getCss('--o');
+    const COLOR_X = getCss('--x');
+    const COLOR_EDGE = '#ffffff';
+
+    // DOM
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const statusEl = document.getElementById('status');
+    const scoreOEl = document.getElementById('scoreO');
+    const scoreXEl = document.getElementById('scoreX');
+    const turnWhoEl = document.getElementById('turnWho');
+    const turnBigEl = document.getElementById('turnBig');
+    const modeSel = document.getElementById('mode');
+    const botSel = document.getElementById('botLevel');
+    const firstSel = document.getElementById('firstPlayer');
+    const newBtn = document.getElementById('newGame');
+    const undoBtn = document.getElementById('undoBtn');
+    const runTestsBtn = document.getElementById('runTests');
+
+    const testSummaryEl = document.getElementById('testSummary');
+    const testLogEl = document.getElementById('testLog');
+
+    // Canvas geometry
+    let boardSize = 0, margin = 0, spacing = 0, hitPad = 18;
+
+    // Game state
+    let hEdges = []; // N x (N-1)
+    let vEdges = []; // (N-1) x N
+    let owners = []; // (N-1) x (N-1) of 'O'|'X'|null
+    let current = 'O';
+    let score = {O:0, X:0};
+    let mode = 'pvp';
+    let botLevel = 'medium';
+    let history = [];
+    let hoverEdge = null; // ['H'|'V', r, c]
+
+    // ====== Utils ======
+    function getCss(name){
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+    function setStatus(msg){ statusEl.textContent = msg; }
+    function deepCopy(obj){ return JSON.parse(JSON.stringify(obj)); }
+    function randChoice(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+    function resetState(){
+      hEdges = Array.from({length:N_POINTS},()=>Array(N_POINTS-1).fill(false));
+      vEdges = Array.from({length:N_POINTS-1},()=>Array(N_POINTS).fill(false));
+      owners = Array.from({length:N_POINTS-1},()=>Array(N_POINTS-1).fill(null));
+      score = {O:0, X:0};
+      history = [];
+      current = firstSel.value;
+    }
+    function snapshot(){
+      return {h:deepCopy(hEdges), v:deepCopy(vEdges), own:deepCopy(owners), score:{...score}, current, mode, bot:botLevel};
+    }
+    function restore(snap){
+      hEdges = snap.h; vEdges = snap.v; owners = snap.own; score = {...snap.score}; current = snap.current; mode = snap.mode; botLevel = snap.bot;
+    }
+
+    function updateHeader(){
+      scoreOEl.textContent = String(score.O);
+      scoreXEl.textContent = String(score.X);
+      turnWhoEl.textContent = current;
+      const bg = current==='O'? COLOR_O : COLOR_X;
+      turnBigEl.style.backgroundColor = bg; turnBigEl.style.color = COLOR_BG;
+    }
+
+    function resizeCanvas(){
+      const rect = canvas.getBoundingClientRect();
+      let size = Math.floor(Math.min(rect.width, rect.height));
+      if(size < 300) size = 300;
+      canvas.width = size; canvas.height = size;
+      boardSize = size;
+      margin = Math.floor(size*0.07);
+      spacing = (size - 2*margin) / (N_POINTS-1);
+      hitPad = Math.max(HIT_PAD_MIN, Math.floor(spacing*0.25));
+    }
+
+    // ====== Geometry helpers ======
+    function pt(r,c){ return [margin + c*spacing, margin + r*spacing]; }
+    function edgeCenter(edge){
+      const [k,r,c] = edge;
+      if(k==='H') return [margin + (c+0.5)*spacing, margin + r*spacing];
+      return [margin + c*spacing, margin + (r+0.5)*spacing];
+    }
+    function inBounds(edge){
+      const [k,r,c] = edge;
+      if(k==='H') return (0<=r && r<N_POINTS) && (0<=c && c<N_POINTS-1);
+      return (0<=r && r<N_POINTS-1) && (0<=c && c<N_POINTS);
+    }
+    function edgeExists(edge){
+      const [k,r,c] = edge;
+      return k==='H' ? hEdges[r][c] : vEdges[r][c];
+    }
+    function setEdge(edge, val=true){
+      const [k,r,c] = edge;
+      if(k==='H') hEdges[r][c] = val; else vEdges[r][c] = val;
+    }
+    function* allEdges(){
+      for(let r=0;r<N_POINTS;r++) for(let c=0;c<N_POINTS-1;c++) yield ['H',r,c];
+      for(let r=0;r<N_POINTS-1;r++) for(let c=0;c<N_POINTS;c++) yield ['V',r,c];
+    }
+    function availableMoves(){
+      const res = [];
+      for(const e of allEdges()) if(!edgeExists(e)) res.push(e);
+      return res;
+    }
+    function squareEdges(r,c){
+      return [['H',r,c],['H',r+1,c],['V',r,c],['V',r,c+1]];
+    }
+    function squareEdgeCount(r,c){
+      let cnt=0; for(const e of squareEdges(r,c)) if(edgeExists(e)) cnt++; return cnt;
+    }
+    function adjacentSquares(edge){
+      const [k,r,c] = edge; const sq=[];
+      if(k==='H'){
+        if(r>0) sq.push([r-1,c]);
+        if(r<N_POINTS-1) sq.push([r,c]);
+      }else{
+        if(c>0) sq.push([r,c-1]);
+        if(c<N_POINTS-1) sq.push([r,c]);
+      }
+      return sq;
+    }
+    function completesSomething(edge){
+      let count=0; for(const [sr,sc] of adjacentSquares(edge)) if(squareEdgeCount(sr,sc)===3 && !edgeExists(edge)) count++; return count;
+    }
+    function movesThatComplete(){ return availableMoves().filter(e=>completesSomething(e)>0); }
+    function moveCreatesThreeEdgesCount(edge){
+      let created=0; for(const [sr,sc] of adjacentSquares(edge)){ const before = squareEdgeCount(sr,sc); if(before===2) created++; } return created;
+    }
+
+    // ====== Game mechanics ======
+    function applyMove(edge, player){
+      setEdge(edge,true); let completed=0;
+      for(const [sr,sc] of adjacentSquares(edge)){
+        if(squareEdgeCount(sr,sc)===4 && owners[sr][sc]==null){ owners[sr][sc]=player; score[player]++; completed++; }
+      }
+      return completed;
+    }
+    function gameOver(){
+      const total = N_POINTS*(N_POINTS-1)*2; let placed=0; for(const e of allEdges()) if(edgeExists(e)) placed++; return placed===total;
+    }
+    function nextPlayer(p){ return p==='O'?'X':'O'; }
+
+    function performMove(edge){
+      if(!edge || edgeExists(edge)) return;
+      history.push(snapshot());
+      const got = applyMove(edge, current);
+      if(got===0) current = nextPlayer(current);
+      updateHeader(); draw();
+      if(gameOver()){ finishGame(); return; }
+      if(mode==='pvb') maybeBotTurn();
+    }
+
+    // ====== Bot ======
+    function safeMoves(){ return availableMoves().filter(e=>moveCreatesThreeEdgesCount(e)===0); }
+    function countThreeSided(){ let cnt=0; for(let r=0;r<N_POINTS-1;r++) for(let c=0;c<N_POINTS-1;c++) if(squareEdgeCount(r,c)===3) cnt++; return cnt; }
+    function simulateAfter(edge, player, metricFn){ const snap=snapshot(); applyMove(edge, player); const val=metricFn(); restore(snap); return val; }
+
+    function botPickMove(level){
+      const caps = movesThatComplete();
+      if(caps.length){
+        if(level==='hard'){
+          let best=null, bestKey=[-1,-1];
+          for(const e of caps){
+            const two = completesSomething(e);
+            const cont = simulateAfter(e, current, ()=>movesThatComplete().length);
+            const key=[two,cont];
+            if(key[0]>bestKey[0] || (key[0]===bestKey[0] && key[1]>bestKey[1])){ bestKey=key; best=e; }
+          }
+          return best;
+        }
+        return randChoice(caps);
+      }
+      const moves = availableMoves(); if(!moves.length) return null;
+      if(level==='easy') return randChoice(moves);
+      const safe = safeMoves();
+      if(safe.length){
+        if(level==='hard'){
+          let best=null, bestKeep=-1; for(const e of safe){ const keep=simulateAfter(e, current, ()=>safeMoves().length); if(keep>bestKeep){bestKeep=keep; best=e;} } return best;
+        }
+        return randChoice(safe);
+      }
+      let minBad=99, bestBad=[]; for(const e of moves){ const bad=moveCreatesThreeEdgesCount(e); if(bad<minBad){minBad=bad; bestBad=[e];} else if(bad===minBad){bestBad.push(e);} }
+      if(level==='hard'){
+        let best=null, bestThree=1e9; for(const e of bestBad){ const three=simulateAfter(e, current, ()=>countThreeSided()); if(three<bestThree){bestThree=three; best=e;} } return best;
+      }
+      return randChoice(bestBad.length?bestBad:moves);
+    }
+
+    function maybeBotTurn(){
+      if(mode!=='pvb') return; const botIs = (firstSel.value==='O')?'X':'O'; if(current!==botIs) return;
+      while(true){
+        const e = botPickMove(botLevel); if(!e) break;
+        history.push(snapshot()); const got = applyMove(e, current); updateHeader(); draw();
+        if(gameOver()){ finishGame(); return; }
+        if(got===0){ current = nextPlayer(current); updateHeader(); draw(); break; }
+      }
+    }
+
+    // ====== Rendering ======
+    function clear(){ ctx.fillStyle = COLOR_BG; ctx.fillRect(0,0,canvas.width,canvas.height); }
+    function drawGrid(){
+      ctx.lineWidth=1; ctx.strokeStyle = COLOR_GRID;
+      for(let i=0;i<N_POINTS;i++){ const y=margin+i*spacing, x1=margin, x2=margin+(N_POINTS-1)*spacing; ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke(); }
+      for(let j=0;j<N_POINTS;j++){ const x=margin+j*spacing, y1=margin, y2=margin+(N_POINTS-1)*spacing; ctx.beginPath(); ctx.moveTo(x,y1); ctx.lineTo(x,y2); ctx.stroke(); }
+    }
+    function drawEdges(){
+      ctx.lineCap='round'; ctx.lineWidth=LINE_W; ctx.strokeStyle = COLOR_EDGE;
+      for(let r=0;r<N_POINTS;r++) for(let c=0;c<N_POINTS-1;c++) if(hEdges[r][c]){ const [x1,y]=pt(r,c); const [x2,_y]=pt(r,c+1); ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke(); }
+      for(let r=0;r<N_POINTS-1;r++) for(let c=0;c<N_POINTS;c++) if(vEdges[r][c]){ const [x,y1]=pt(r,c); const [_x,y2]=pt(r+1,c); ctx.beginPath(); ctx.moveTo(x,y1); ctx.lineTo(x,y2); ctx.stroke(); }
+    }
+    function drawHover(){
+      if(!hoverEdge || edgeExists(hoverEdge)) return; const [x,y] = edgeCenter(hoverEdge); ctx.lineWidth=LINE_W+2; ctx.lineCap='round'; ctx.strokeStyle=COLOR_HOVER;
+      if(hoverEdge[0]==='H'){ const x1=x-spacing/2, x2=x+spacing/2; ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke(); }
+      else{ const y1=y-spacing/2, y2=y+spacing/2; ctx.beginPath(); ctx.moveTo(x,y1); ctx.lineTo(x,y2); ctx.stroke(); }
+    }
+    function drawSquares(){
+      for(let r=0;r<N_POINTS-1;r++) for(let c=0;c<N_POINTS-1;c++){ const owner=owners[r][c]; if(owner){ const [x1,y1]=pt(r,c); const [x2,y2]=pt(r+1,c+1); const w=x2-x1, h=y2-y1; ctx.fillStyle=(owner==='O'?COLOR_O:COLOR_X)+'55'; ctx.fillRect(x1+3,y1+3,w-6,h-6); ctx.fillStyle=COLOR_BG; ctx.font=`${Math.floor(spacing*0.45)}px Inter, system-ui, sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(owner, x1+w/2, y1+h/2); } }
+    }
+    function drawDots(){ ctx.fillStyle = COLOR_DOT; for(let r=0;r<N_POINTS;r++) for(let c=0;c<N_POINTS;c++){ const [x,y]=pt(r,c); ctx.beginPath(); ctx.arc(x,y,DOT_R,0,Math.PI*2); ctx.fill(); } }
+    function draw(){ clear(); drawGrid(); drawSquares(); drawEdges(); drawHover(); drawDots(); }
+
+    // ====== Hit testing ======
+    function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+    function nearestEdge(mx,my){
+      const rx = (mx - margin)/spacing, ry=(my - margin)/spacing;
+      const rH=Math.round(ry), cH=Math.round(rx-0.5);
+      const rV=Math.round(ry-0.5), cV=Math.round(rx);
+      let best=null, bestD=1e9;
+      if(0<=rH && rH<N_POINTS && 0<=cH && cH<N_POINTS-1){ const hy=margin+rH*spacing; const x1=margin+cH*spacing, x2=margin+(cH+1)*spacing; const projx=clamp(mx,x1,x2); const d=Math.hypot(projx-mx, hy-my); best=['H',rH,cH]; bestD=d; }
+      if(0<=rV && rV<N_POINTS-1 && 0<=cV && cV<N_POINTS){ const vx=margin+cV*spacing; const y1=margin+rV*spacing, y2=margin+(rV+1)*spacing; const projy=clamp(my,y1,y2); const d=Math.hypot(vx-mx, projy-my); if(d<bestD){ best=['V',rV,cV]; bestD=d; } }
+      if(!best) return null; return bestD<=hitPad ? best : null;
+    }
+
+    // ====== Events ======
+    function updateBotSelectState(){ botSel.disabled = (modeSel.value !== 'pvb'); }
+    function onMove(e){ const rect=canvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top; hoverEdge = nearestEdge(x,y); draw(); }
+    function onClick(e){ if(gameOver()) return; const rect=canvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top; const edge = nearestEdge(x,y); performMove(edge); }
+    function onTouch(e){ if(e.touches && e.touches.length>0){ const t=e.touches[0]; const rect=canvas.getBoundingClientRect(); const x=t.clientX-rect.left, y=t.clientY-rect.top; const edge=nearestEdge(x,y); if(edge && !edgeExists(edge)) onClick({clientX:t.clientX, clientY:t.clientY}); } e.preventDefault(); }
+    function onResize(){ resizeCanvas(); draw(); }
+    function onModeChange(){ mode = modeSel.value; updateBotSelectState(); }
+    function onNewGame(){ mode = modeSel.value; botLevel = botSel.value; resetState(); setStatus('Новая игра.'); updateHeader(); onResize(); updateBotSelectState(); if(mode==='pvb'){ const botIs = (firstSel.value==='O')?'X':'O'; if(current===botIs) maybeBotTurn(); } }
+    function onUndo(){ if(!history.length){ setStatus('Нет ходов для отмены.'); return; } const snap = history.pop(); restore(snap); setStatus('Ход отменён.'); hoverEdge=null; updateHeader(); draw(); }
+    function finishGame(){ const o=score.O, x=score.X; if(o===x) setStatus(`Ничья ${o}:${x} — поле заполнено.`); else if(o>x) setStatus(`Победа O (синий) — ${o}:${x}!`); else setStatus(`Победа X (оранжевый) — ${x}:${o}!`); }
+
+    // ====== Self-tests ======
+    function Assert(cond,msg){ if(!cond) throw new Error(msg); }
+    function runSelfTests(){
+      const log=[]; const ok=m=>log.push('✔ '+m); const fail=m=>log.push('✖ '+m);
+      const snap = snapshot();
+      try{
+        const total = N_POINTS*(N_POINTS-1)*2; Assert(availableMoves().length===total,'Неверное число доступных ходов на пустом поле'); ok('T1');
+        const se = squareEdges(0,0); Assert(se.length===4,'squareEdges(0,0) должно вернуть 4 ребра'); Assert(se.every(inBounds),'Рёбра первой клетки должны быть в границах'); ok('T2');
+        const [eTop,eBot,eLeft,eRight]=se; setEdge(eTop,true); setEdge(eLeft,true); setEdge(eRight,true); Assert(completesSomething(eBot)===1,'Четвёртая сторона должна завершать 1 квадрат'); const got=applyMove(eBot,'O'); Assert(got===1 && owners[0][0]==='O' && score.O>=1,'Захват клетки не засчитан корректно'); ok('T3');
+        restore(snap); const mv = botPickMove('easy'); Assert(mv && inBounds(mv),'Бот (easy) должен предлагать допустимый ход'); ok('T4');
+        Assert(!inBounds(['H',-1,0]) && !inBounds(['V',0,-1]), 'inBounds должен возвращать False для отрицательных индексов'); Assert(!inBounds(['H',N_POINTS,0]) && !inBounds(['V',0,N_POINTS]), 'inBounds должен возвращать False для индексов за пределами'); ok('T5');
+        restore(snap); const se2 = squareEdges(1,1); const [t,b,l,r] = se2; setEdge(t,true); setEdge(l,true); setEdge(r,true); const must=new Set(movesThatComplete().map(e=>e.toString())); Assert(must.has(b.toString())||must.has(t.toString())||must.has(l.toString())||must.has(r.toString()), 'Отсутствующая сторона должна быть ходом, завершающим клетку'); ok('T6');
+        restore(snap); const mv2 = botPickMove('hard'); Assert(mv2 && inBounds(mv2), 'Бот (hard) должен предлагать допустимый ход'); ok('T7');
+        // UI: селектор бота
+        const prevMode = modeSel.value; modeSel.value='pvp'; updateBotSelectState(); Assert(botSel.disabled, 'Селектор бота должен отключаться в PvP'); modeSel.value='pvb'; updateBotSelectState(); Assert(!botSel.disabled,'Селектор бота должен включаться в PvB'); ok('T8'); modeSel.value=prevMode; updateBotSelectState();
+        // Очередь в PvP
+        restore(snap); mode='pvp'; current='O'; performMove(['H',0,0]); Assert(current==='X','В PvP после хода без замыкания должен смениться игрок'); ok('T9');
+        restore(snap); mode='pvp'; current='O'; const [tt,bb,ll,rr]=squareEdges(2,2); setEdge(tt,true); setEdge(ll,true); setEdge(rr,true); performMove(bb); Assert(current==='O','После замыкания клетки ход должен остаться у того же игрока'); ok('T10');
+        testSummaryEl.className='test-pass'; testSummaryEl.textContent='все тесты пройдены';
+      }catch(ex){ testSummaryEl.className='test-fail'; testSummaryEl.textContent='ошибка тестов: '+ex.message; fail(String(ex.message)); }
+      finally{ restore(snap); updateHeader(); draw(); testLogEl.textContent = log.join('\n'); }
+    }
+
+    // ====== Wire up ======
+    function init(){
+      resizeCanvas(); resetState(); updateHeader(); draw();
+      canvas.addEventListener('mousemove', onMove);
+      canvas.addEventListener('click', onClick);
+      canvas.addEventListener('touchstart', onTouch, {passive:false});
+      window.addEventListener('resize', onResize);
+      newBtn.addEventListener('click', onNewGame);
+      undoBtn.addEventListener('click', onUndo);
+      runTestsBtn.addEventListener('click', runSelfTests);
+      modeSel.addEventListener('change', onModeChange);
+      updateBotSelectState(); onNewGame(); runSelfTests();
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>
