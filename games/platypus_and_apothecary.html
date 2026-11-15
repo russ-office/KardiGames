@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Утконос и Аптекарь</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #0b0f14; overflow: hidden;
+    font-family: "Courier New", monospace; color: #cfd8e0;
+    -webkit-user-select: none; user-select: none; touch-action: none; overscroll-behavior: none; }
+  #app { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; }
+  #stage { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; background: #0b0f14; image-rendering: pixelated; }
+  #pad { flex: 0 0 auto; width: 100%; max-width: 560px; display: none;
+    justify-content: space-between; align-items: center; padding: 8px 14px 18px; gap: 10px; }
+  .touch #pad { display: flex; }
+  .grp { display: flex; gap: 10px; align-items: center; }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+  button.k { width: 62px; height: 56px; border-radius: 12px; border: 2px solid #8fa0b0;
+    background: linear-gradient(#5d6b78, #2c353e); color: #eef3f7; font: bold 24px "Courier New", monospace;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.25), 0 3px 0 #11161b; padding: 0; touch-action: none; }
+  button.k.on { background: linear-gradient(#c9892f, #7a4a12); transform: translateY(2px); box-shadow: none; }
+  button.k.v { height: 44px; }
+  button.k.jump { width: 96px; height: 96px; border-radius: 50%; font-size: 15px; border-color: #e0a850;
+    background: radial-gradient(circle at 35% 30%, #f0c070, #9a5a14); }
+  button.k.jump.on { background: radial-gradient(circle at 35% 30%, #ffe0a0, #c97a20); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="c" width="360" height="640"></canvas></div>
+  <div id="pad">
+    <div class="grp">
+      <button class="k" data-k="left">◀</button>
+      <button class="k" data-k="right">▶</button>
+    </div>
+    <div class="col">
+      <button class="k v" data-k="up">▲</button>
+      <button class="k v" data-k="down">▼</button>
+    </div>
+    <button class="k jump" data-k="jump">ПРЫЖОК</button>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var W = 360, H = 640;
+  var cv = document.getElementById('c'), g = cv.getContext('2d');
+  var stage = document.getElementById('stage');
+  var isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  if (isTouch) document.documentElement.classList.add('touch');
+
+  function fit() {
+    var r = stage.getBoundingClientRect();
+    var s = Math.min(r.width / W, r.height / H);
+    var dpr = Math.min(window.devicePixelRatio || 1, 3);
+    cv.style.width = Math.floor(W * s) + 'px';
+    cv.style.height = Math.floor(H * s) + 'px';
+    cv.width = Math.round(W * s * dpr); cv.height = Math.round(H * s * dpr);
+    g.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function () { setTimeout(fit, 200); });
+
+  /* ---------- input ---------- */
+  var keys = { left: false, right: false, up: false, down: false, jump: false };
+  var jumpPressed = false, anyPressed = false;
+  var map = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down',
+    KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down', Space: 'jump' };
+  function press(k) { if (!keys[k]) { if (k === 'jump') jumpPressed = true; anyPressed = true; } keys[k] = true; audioInit(); }
+  window.addEventListener('keydown', function (e) {
+    var k = map[e.code]; if (k) { press(k); e.preventDefault(); }
+    else if (e.code === 'Enter') { anyPressed = true; audioInit(); }
+  });
+  window.addEventListener('keyup', function (e) { var k = map[e.code]; if (k) { keys[k] = false; e.preventDefault(); } });
+  Array.prototype.forEach.call(document.querySelectorAll('button.k'), function (b) {
+    var k = b.getAttribute('data-k');
+    function dn(e) { e.preventDefault(); press(k); b.classList.add('on'); }
+    function up(e) { e.preventDefault(); keys[k] = false; b.classList.remove('on'); }
+    b.addEventListener('pointerdown', dn); b.addEventListener('pointerup', up);
+    b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+    b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  });
+  cv.addEventListener('pointerdown', function (e) { e.preventDefault(); anyPressed = true; audioInit(); });
+  document.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+  document.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+
+  /* ---------- sound ---------- */
+  var ac = null;
+  function audioInit() {
+    if (ac) { if (ac.state === 'suspended') ac.resume().catch(function () {}); return; }
+    try { var A = window.AudioContext || window.webkitAudioContext; if (A) ac = new A(); } catch (e) { ac = null; }
+  }
+  function beep(f, d, type, f2) {
+    if (!ac) return;
+    try {
+      var o = ac.createOscillator(), v = ac.createGain(), t = ac.currentTime;
+      o.type = type || 'square'; o.frequency.setValueAtTime(f, t);
+      if (f2) o.frequency.linearRampToValueAtTime(f2, t + d);
+      v.gain.setValueAtTime(0.06, t); v.gain.linearRampToValueAtTime(0, t + d);
+      o.connect(v); v.connect(ac.destination); o.start(t); o.stop(t + d);
+    } catch (e) {}
+  }
+
+  /* ---------- level ---------- */
+  // platforms: 0 = floor, 1..5 = tilted beams, 6 = top cage deck
+  var P = [
+    { x1: 0, y1: 604, x2: 360, y2: 604, dir: -1 },
+    { x1: 0, y1: 508, x2: 310, y2: 520, dir: 1 },
+    { x1: 50, y1: 432, x2: 360, y2: 420, dir: -1 },
+    { x1: 0, y1: 332, x2: 310, y2: 344, dir: 1 },
+    { x1: 50, y1: 256, x2: 360, y2: 244, dir: -1 },
+    { x1: 0, y1: 156, x2: 310, y2: 168, dir: 1 },
+    { x1: 150, y1: 84, x2: 270, y2: 84, dir: 0 }
+  ];
+  function sy(p, x) { var q = P[p]; return q.y1 + (q.y2 - q.y1) * (x - q.x1) / (q.x2 - q.x1); }
+  var L = [];
+  [[0, 270], [1, 90], [1, 205], [2, 262], [2, 130], [3, 100], [3, 225], [4, 272], [4, 150], [5, 232]]
+    .forEach(function (a) { L.push({ lo: a[0], hi: a[0] + 1, x: a[1], yb: sy(a[0], a[1]), yt: sy(a[0] + 1, a[1]) }); });
+
+  var HI = 0;
+  try { HI = +localStorage.getItem('steeltower_hi') || 0; } catch (e) {}
+  var state = 'title', score = 0, lives = 3, level = 1, bonus = 0, tmsg = 0;
+  var hero, gears, pops, throwT, bossArm, time = 0;
+
+  function resetHero() { hero = { x: 40, y: 604, vy: 0, mode: 'walk', p: 0, lad: null, face: 1, step: 0, dead: 0 }; }
+  function startLevel() { resetHero(); gears = []; pops = []; throwT = 1.2; bossArm = 0; bonus = 5000; }
+  function newGame() { score = 0; lives = 3; level = 1; startLevel(); state = 'play'; }
+
+  function spawnGear() {
+    gears.push({ x: 78, y: sy(5, 78), p: 5, mode: 'roll', vy: 0, rot: 0, col: Math.floor(Math.random() * 4), lad: null, scored: false,
+      sp: 62 + level * 9 + Math.random() * 14 });
+    bossArm = 0.35; beep(140, 0.08, 'sawtooth');
+  }
+
+  function landing(x, y0, y1, maxP) {
+    for (var i = Math.min(6, maxP); i >= 0; i--) {
+      var q = P[i]; if (x < q.x1 - 2 || x > q.x2 + 2) continue;
+      var s = sy(i, x); if (y0 <= s + 1 && y1 >= s) return i;
+    }
+    return -1;
+  }
+
+  function update(dt) {
+    time += dt;
+    if (state !== 'play') {
+      tmsg += dt;
+      if (anyPressed && tmsg > 0.6) {
+        if (state === 'title' || state === 'over') newGame();
+        else if (state === 'win') { level++; startLevel(); state = 'play'; }
+        tmsg = 0;
+      }
+      anyPressed = false; jumpPressed = false;
+      if (state !== 'win') return;
+    }
+    anyPressed = false;
+    var h = hero, i, l;
+
+    if (state === 'play') {
+      if (h.dead > 0) {
+        h.dead -= dt;
+        if (h.dead <= 0) {
+          lives--;
+          if (lives <= 0) { state = 'over'; tmsg = 0; saveHi(); }
+          else { resetHero(); gears = []; throwT = 1.2; }
+        }
+        jumpPressed = false; return;
+      }
+      bonus = Math.max(0, bonus - dt * 60);
+      var sp = 78;
+      if (h.mode === 'walk') {
+        var dx = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+        if (dx) { h.face = dx; h.step += dt * 10; }
+        h.x = Math.max(8, Math.min(W - 8, h.x + dx * sp * dt));
+        var q = P[h.p];
+        if (h.x < q.x1 - 3 || h.x > q.x2 + 3) { h.mode = 'air'; h.vy = 0; h.vx = dx * sp; }
+        else {
+          h.y = sy(h.p, h.x);
+          if (jumpPressed) { h.mode = 'air'; h.vy = -235; h.vx = dx * sp; beep(420, 0.12, 'square', 760); }
+          else if (keys.up || keys.down) {
+            for (i = 0; i < L.length; i++) {
+              l = L[i];
+              if (Math.abs(h.x - l.x) < 11 && ((keys.up && l.lo === h.p) || (keys.down && l.hi === h.p))) {
+                h.mode = 'climb'; h.lad = l; h.x = l.x; break;
+              }
+            }
+          }
+        }
+      } else if (h.mode === 'climb') {
+        l = h.lad;
+        var dy = (keys.down ? 1 : 0) - (keys.up ? 1 : 0);
+        if (dy) h.step += dt * 9;
+        h.y += dy * 62 * dt;
+        if (h.y <= l.yt) { h.y = l.yt; h.mode = 'walk'; h.p = l.hi; h.lad = null; }
+        else if (h.y >= l.yb) { h.y = l.yb; h.mode = 'walk'; h.p = l.lo; h.lad = null; }
+      } else { // air
+        var y0 = h.y;
+        h.vy += 720 * dt; h.y += h.vy * dt;
+        h.x = Math.max(8, Math.min(W - 8, h.x + (h.vx || 0) * dt));
+        if (h.vy > 0) {
+          var lp = landing(h.x, y0, h.y, 6);
+          if (lp >= 0) { h.p = lp; h.y = sy(lp, h.x); h.mode = 'walk'; h.vy = 0; }
+        }
+        if (h.y > H + 40) { h.dead = 1; }
+      }
+      jumpPressed = false;
+
+      if (h.mode === 'walk' && h.p === 6) {
+        var b = Math.round(bonus / 100) * 100;
+        score += 1000 + b; saveHi(); state = 'win'; tmsg = 0;
+        beep(523, 0.12); setTimeout(function () { beep(659, 0.12); }, 130); setTimeout(function () { beep(784, 0.25); }, 260);
+        pops.push({ x: 210, y: 40, t: 1.6, s: '+' + (1000 + b) });
+      }
+
+      throwT -= dt;
+      if (throwT <= 0) { spawnGear(); throwT = Math.max(1.1, 2.9 - level * 0.28) + Math.random() * 0.9; }
+    }
+    if (bossArm > 0) bossArm -= dt;
+
+    for (i = gears.length - 1; i >= 0; i--) {
+      var e = gears[i];
+      if (e.mode === 'roll') {
+        var d = P[e.p].dir, px = e.x;
+        e.x += d * e.sp * dt; e.rot += d * e.sp * dt / 9; e.y = sy(e.p, e.x);
+        for (var j = 0; j < L.length; j++) {
+          l = L[j];
+          if (l.hi === e.p && (px - l.x) * (e.x - l.x) <= 0 && px !== e.x && Math.random() < 0.28) {
+            e.mode = 'lad'; e.lad = l; e.x = l.x; break;
+          }
+        }
+        if (e.mode === 'roll' && (e.x > P[e.p].x2 + 4 || e.x < P[e.p].x1 - 4)) {
+          if (e.p === 0) { gears.splice(i, 1); continue; }
+          e.mode = 'fall'; e.vy = 0;
+        }
+      } else if (e.mode === 'fall') {
+        var ey = e.y; e.vy += 720 * dt; e.y += e.vy * dt; e.rot += dt * 4;
+        var np = landing(e.x, ey, e.y, e.p - 1);
+        if (np >= 0) { e.p = np; e.y = sy(np, e.x); e.mode = 'roll'; beep(90, 0.05, 'triangle'); }
+        if (e.y > H + 30) { gears.splice(i, 1); continue; }
+      } else {
+        e.y += 70 * dt; e.rot += dt * 5;
+        if (e.y >= e.lad.yb) { e.y = e.lad.yb; e.p = e.lad.lo; e.mode = 'roll'; e.lad = null; }
+      }
+      if (state === 'play' && h.dead <= 0) {
+        var cx = e.x - h.x, cy = (e.y - 9) - (h.y - 12);
+        if (cx * cx + cy * cy < 15 * 15) {
+          h.dead = 1.3; beep(300, 0.5, 'sawtooth', 60);
+        } else if (!e.scored && h.mode === 'air' && Math.abs(cx) < 9 && e.y > h.y && e.y - h.y < 46) {
+          e.scored = true; score += 100; pops.push({ x: h.x, y: h.y - 30, t: 0.8, s: '100' }); beep(880, 0.08);
+        }
+      }
+    }
+    for (i = pops.length - 1; i >= 0; i--) { pops[i].t -= dt; pops[i].y -= dt * 18; if (pops[i].t <= 0) pops.splice(i, 1); }
+  }
+  function saveHi() { if (score > HI) { HI = score; try { localStorage.setItem('steeltower_hi', String(HI)); } catch (e) {} } }
+
+  /* ---------- drawing ---------- */
+  function metal(y, hgt, a, b, c) {
+    var gr = g.createLinearGradient(0, y, 0, y + hgt);
+    gr.addColorStop(0, a); gr.addColorStop(0.45, b); gr.addColorStop(1, c); return gr;
+  }
+  function drawBg() {
+    var gr = g.createLinearGradient(0, 0, 0, H);
+    gr.addColorStop(0, '#10161d'); gr.addColorStop(1, '#1b232c');
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(140,160,180,.06)'; g.lineWidth = 1;
+    for (var x = 0; x <= W; x += 40) { g.beginPath(); g.moveTo(x + .5, 0); g.lineTo(x + .5, H); g.stroke(); }
+    for (var y = 20; y <= H; y += 40) { g.beginPath(); g.moveTo(0, y + .5); g.lineTo(W, y + .5); g.stroke(); }
+  }
+  function drawBeam(q) {
+    var n = Math.ceil((q.x2 - q.x1) / 10);
+    for (var i = 0; i < n; i++) {
+      var x = q.x1 + i * 10, w = Math.min(10, q.x2 - x);
+      var y = Math.round(q.y1 + (q.y2 - q.y1) * (x - q.x1) / (q.x2 - q.x1));
+      g.fillStyle = metal(y, 4, '#f2f6f9', '#b4c0cb', '#77848f'); g.fillRect(x, y, w, 4);
+      g.fillStyle = '#2a333c'; g.fillRect(x, y + 4, w, 6);
+      g.strokeStyle = '#8795a2'; g.lineWidth = 1.2; g.beginPath();
+      if (i % 2) { g.moveTo(x, y + 4); g.lineTo(x + w, y + 10); } else { g.moveTo(x, y + 10); g.lineTo(x + w, y + 4); }
+      g.stroke();
+      g.fillStyle = metal(y + 10, 3, '#aab6c1', '#6d7a86', '#434d56'); g.fillRect(x, y + 10, w, 3);
+      if (i % 3 === 0) { g.fillStyle = '#e8eef2'; g.fillRect(x + 2, y + 1, 2, 2); }
+    }
+  }
+  function drawLadder(l) {
+    var top = l.yt, bot = l.yb;
+    g.fillStyle = metal(0, 1, '#f0c070', '#f0c070', '#f0c070');
+    var gr = g.createLinearGradient(l.x - 8, 0, l.x + 8, 0);
+    gr.addColorStop(0, '#f3c878'); gr.addColorStop(.5, '#b8792a'); gr.addColorStop(1, '#f3c878');
+    g.fillStyle = gr; g.fillRect(l.x - 8, top, 3, bot - top); g.fillRect(l.x + 5, top, 3, bot - top);
+    g.fillStyle = '#d9a04c';
+    for (var y = bot - 8; y > top + 2; y -= 9) g.fillRect(l.x - 6, y, 12, 2);
+  }
+  function ell(x, y, rx, ry, fill, rot) {
+    g.beginPath(); g.ellipse(x, y, rx, ry, rot || 0, 0, 6.3); g.fillStyle = fill; g.fill();
+    g.lineWidth = 1; g.strokeStyle = '#24160c'; g.stroke();
+  }
+  var PILL = ['#e5483d', '#3f7fd0', '#f2b53a', '#46a86a'];
+  function drawGear(e) {
+    g.save(); g.translate(e.x, e.y - 9); g.rotate(e.rot);
+    g.beginPath(); g.arc(0, 0, 8.5, 0, 6.3); g.fillStyle = '#fbf7ee'; g.fill();
+    g.beginPath(); g.arc(0, 0, 8.5, -Math.PI / 2, Math.PI / 2); g.fillStyle = PILL[e.col || 0]; g.fill();
+    g.beginPath(); g.arc(0, 0, 8.5, 0, 6.3); g.lineWidth = 1.2; g.strokeStyle = '#1b232c'; g.stroke();
+    g.fillStyle = 'rgba(255,255,255,.7)'; g.fillRect(-5, -5, 3, 2);
+    g.restore();
+  }
+  function drawHero(h) {
+    g.save(); g.translate(Math.round(h.x), Math.round(h.y));
+    if (h.dead > 0) { g.rotate((1.3 - h.dead) * 9); g.translate(0, 10); }
+    var climb = h.mode === 'climb';
+    if (!climb) g.scale(h.face, 1);
+    var s = (Math.floor(h.step) % 2) ? 1 : -1; if (h.mode === 'air') s = 0;
+    var fur = '#8b5a34', dark = '#5a3a22', bill = '#4a515c';
+    if (climb) {
+      ell(0, -3, 5, 6, dark);
+      ell(-4, -1 + s, 3.5, 2, bill); ell(4, -1 - s, 3.5, 2, bill);
+      ell(0, -11, 7, 9, fur);
+      ell(-7, -18 + s * 2, 2.5, 4, fur); ell(7, -18 - s * 2, 2.5, 4, fur);
+      ell(0, -21, 6, 6, fur);
+      g.fillStyle = '#d83a2e'; g.fillRect(-5, -17, 10, 3);
+    } else {
+      ell(-10, -7, 7, 3.5, dark, -0.35);
+      ell(-3 + s * 2, -1.5, 4.5, 2, bill); ell(4 - s * 2, -1.5, 4.5, 2, bill);
+      ell(0, -11, 7, 9, fur);
+      ell(1.5, -9, 4, 6, '#c79a6b');
+      ell(2, -21, 6, 6, fur);
+      ell(9.5, -19, 6, 2.6, bill);
+      g.fillStyle = '#d83a2e'; g.fillRect(-5, -17, 11, 3); g.fillRect(-8, -16, 3, 5);
+      g.beginPath(); g.arc(4, -22.5, 2.2, 0, 6.3); g.fillStyle = '#fff'; g.fill();
+      g.beginPath(); g.arc(4.8, -22.5, 1.1, 0, 6.3); g.fillStyle = '#111'; g.fill();
+      ell(5, -12 + (h.mode === 'air' ? -5 : s), 3.5, 2, fur);
+    }
+    g.restore();
+  }
+  function bottle(x, y, c) {
+    g.fillStyle = c; g.fillRect(x - 5, y - 14, 10, 14);
+    g.fillStyle = '#fbf7ee'; g.fillRect(x - 5, y - 10, 10, 5);
+    g.fillStyle = '#8b5a34'; g.fillRect(x - 3, y - 18, 6, 4);
+    g.strokeStyle = '#1b232c'; g.lineWidth = 1; g.strokeRect(x - 5, y - 14, 10, 14);
+  }
+  function drawBoss() {
+    var x = 44, y = sy(5, 44), up = bossArm > 0, wob = Math.sin(time * 3) * 1.2;
+    bottle(8, sy(5, 8), '#46a86a'); bottle(20, sy(5, 20), '#3f7fd0'); bottle(14, sy(5, 14) - 14, '#e5483d');
+    g.save(); g.translate(x, y);
+    ell(-7, -2, 7, 3, '#2a2f36'); ell(7, -2, 7, 3, '#2a2f36');
+    g.fillStyle = '#6b4a35'; g.fillRect(-11, -14, 9, 12); g.fillRect(2, -14, 9, 12);
+    // arms
+    if (up) { ell(22, -46, 9, 4, '#efe6d2', -0.5); ell(30, -51, 4, 4, '#f2c9a0'); }
+    else { ell(20, -30 + wob, 4, 10, '#efe6d2'); ell(20, -20 + wob, 4, 4, '#f2c9a0'); }
+    ell(-20, -30 - wob, 4, 10, '#efe6d2'); ell(-20, -20 - wob, 4, 4, '#f2c9a0');
+    ell(0, -32, 19, 21, '#efe6d2');
+    // apron
+    g.beginPath(); g.moveTo(-10, -48); g.lineTo(10, -48); g.lineTo(15, -14); g.lineTo(-15, -14); g.closePath();
+    g.fillStyle = '#3f8f5a'; g.fill(); g.strokeStyle = '#24160c'; g.stroke();
+    g.beginPath(); g.arc(0, -30, 7, 0, 6.3); g.fillStyle = '#fbf7ee'; g.fill();
+    g.fillStyle = '#3f8f5a'; g.fillRect(-1.5, -35, 3, 10); g.fillRect(-5, -31.5, 10, 3);
+    // bow tie
+    g.fillStyle = '#d83a2e'; g.beginPath(); g.moveTo(0, -51); g.lineTo(-6, -55); g.lineTo(-6, -47); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(0, -51); g.lineTo(6, -55); g.lineTo(6, -47); g.closePath(); g.fill();
+    // head
+    ell(-11, -62, 4, 5, '#cfd5da'); ell(11, -62, 4, 5, '#cfd5da');
+    ell(0, -64 + wob * 0.3, 12, 12, '#f2c9a0');
+    var hy = -64 + wob * 0.3;
+    g.strokeStyle = '#24160c'; g.lineWidth = 1.3;
+    g.beginPath(); g.arc(-4.5, hy - 1, 3.6, 0, 6.3); g.fillStyle = '#eaf6ff'; g.fill(); g.stroke();
+    g.beginPath(); g.arc(4.5, hy - 1, 3.6, 0, 6.3); g.fill(); g.stroke();
+    g.beginPath(); g.moveTo(-1, hy - 1); g.lineTo(1, hy - 1); g.stroke();
+    g.fillStyle = '#111'; g.fillRect(-5, hy - 2, 2, 2); g.fillRect(4, hy - 2, 2, 2);
+    ell(-4, hy + 6, 5, 2.4, '#cfd5da', 0.25); ell(4, hy + 6, 5, 2.4, '#cfd5da', -0.25);
+    ell(0, hy + 3, 2, 1.8, '#e8a888');
+    g.restore();
+    if (up) drawGear({ x: x + 32, y: y - 46, rot: time * 6, col: 0 });
+  }
+  function drawCage() {
+    var x = 178, y = 84, w = 48, hgt = 50;
+    // paper
+    g.save(); g.translate(x + w / 2, y - 22 + Math.sin(time * 2.4) * 1.5); g.rotate(-0.06);
+    g.fillStyle = '#fbf7ea'; g.fillRect(-17, -13, 34, 26);
+    g.fillStyle = '#d8d2bd'; g.fillRect(-17, 11, 34, 2);
+    g.fillStyle = '#c0261c'; g.font = 'bold 15px "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('WIN', 0, 0);
+    g.restore();
+    // bars
+    for (var i = 0; i <= 4; i++) {
+      var bx = x + i * 12;
+      var gr = g.createLinearGradient(bx - 1, 0, bx + 2, 0);
+      gr.addColorStop(0, '#f0f4f7'); gr.addColorStop(1, '#6f7c88');
+      g.fillStyle = gr; g.fillRect(bx - 1, y - hgt, 2, hgt);
+    }
+    g.fillStyle = metal(y - hgt - 4, 5, '#f2f6f9', '#aab6c1', '#66727d'); g.fillRect(x - 4, y - hgt - 4, w + 8, 5);
+    g.fillStyle = '#d9a04c'; g.fillRect(x + w / 2 - 3, y - hgt - 9, 6, 5);
+  }
+  function txt(s, x, y, size, col, al) {
+    g.font = 'bold ' + size + 'px "Courier New", monospace'; g.textAlign = al || 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#05080b'; g.fillText(s, x + 1, y + 1); g.fillStyle = col || '#eef3f7'; g.fillText(s, x, y);
+  }
+  function pad6(n) { n = String(Math.floor(n)); while (n.length < 6) n = '0' + n; return n; }
+  function panel(y, hgt) {
+    g.fillStyle = 'rgba(8,12,16,.82)'; g.fillRect(24, y, W - 48, hgt);
+    g.strokeStyle = '#b4c0cb'; g.lineWidth = 2; g.strokeRect(25, y + 1, W - 50, hgt - 2);
+  }
+  function draw() {
+    drawBg();
+    var i;
+    for (i = 0; i < L.length; i++) drawLadder(L[i]);
+    for (i = 0; i < P.length; i++) drawBeam(P[i]);
+    drawCage(); drawBoss();
+    for (i = 0; i < gears.length; i++) drawGear(gears[i]);
+    drawHero(hero);
+    for (i = 0; i < pops.length; i++) txt(pops[i].s, pops[i].x, pops[i].y, 11, '#ffe08a');
+    txt('ОЧКИ ' + pad6(score), 8, 12, 11, '#eef3f7', 'left');
+    txt('РЕКОРД ' + pad6(Math.max(HI, score)), W - 8, 12, 11, '#f0c070', 'right');
+    txt('УР ' + level + '  БОНУС ' + Math.round(bonus / 100) * 100, W - 8, 27, 10, '#9db8dd', 'right');
+    for (i = 0; i < lives; i++) { g.fillStyle = '#8b5a34'; g.fillRect(8 + i * 13, 22, 9, 7); g.fillStyle = '#d83a2e'; g.fillRect(8 + i * 13, 29, 9, 3); }
+
+    var hint = isTouch ? 'Нажми на экран' : 'Нажми Enter или Пробел';
+    if (state === 'title') {
+      panel(250, 170);
+      txt('УТКОНОС И АПТЕКАРЬ', W / 2, 282, 20, '#f0c070');
+      txt('Помоги утконосу обойти аптекаря', W / 2, 310, 11);
+      txt('Заберись наверх к клетке с листком', W / 2, 334, 11, '#b4c0cb');
+      txt('Перепрыгивай пилюли: +100', W / 2, 352, 11, '#b4c0cb');
+      txt(isTouch ? '◀ ▶ ходить · ▲ ▼ лестницы' : '← → ходить · ↑ ↓ лестницы · Пробел прыжок', W / 2, 372, 10, '#9db8dd');
+      if (Math.floor(time * 2) % 2) txt(hint, W / 2, 398, 13, '#ffffff');
+    } else if (state === 'win') {
+      panel(270, 110);
+      txt('WIN!', W / 2, 302, 34, '#ffe08a');
+      txt('Уровень ' + level + ' пройден', W / 2, 336, 12);
+      if (Math.floor(time * 2) % 2) txt(hint + ' — дальше', W / 2, 360, 11, '#ffffff');
+    } else if (state === 'over') {
+      panel(270, 110);
+      txt('ИГРА ОКОНЧЕНА', W / 2, 302, 22, '#ff7a6a');
+      txt('Очки: ' + score, W / 2, 334, 13);
+      if (Math.floor(time * 2) % 2) txt(hint, W / 2, 360, 11, '#ffffff');
+    }
+  }
+
+  /* ---------- loop ---------- */
+  startLevel(); fit();
+  var last = 0;
+  function frame(t) {
+    var dt = Math.min(0.05, (t - last) / 1000 || 0); last = t;
+    var n = Math.max(1, Math.ceil(dt / 0.017));
+    for (var i = 0; i < n; i++) update(dt / n);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  window.__game = { update: update, get s() { return { state: state, hero: hero, gears: gears, score: score, lives: lives, level: level }; }, keys: keys,
+    press: function () { anyPressed = true; }, jump: function () { jumpPressed = true; } };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
