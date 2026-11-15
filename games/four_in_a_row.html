@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Четыре в ряд</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="4 в ряд">
+<meta name="theme-color" content="#12141c">
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#12141c; --panel:#1b1e2b; --line:#2a2f42; --text:#eef0f7; --muted:#8e94ab;
+  --board:#2f3fa8; --board-hi:#3a4cc4; --hole:#0c0e15;
+  --p1:#ff5a4f; --p1-d:#c93a31; --p2:#ffc93c; --p2-d:#d69c12;
+  --good:#3ddc84; --bad:#ff6b6b;
+  --reserve:190px;
+  --cell: clamp(38px, min(calc((100vw - 28px) / 7), calc((100dvh - var(--reserve)) / 6)), 84px);
+}
+html.train{--reserve:296px}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px; line-height:1.4;
+  min-height:100dvh;
+  padding:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left));
+  display:flex; justify-content:center;
+  -webkit-tap-highlight-color:transparent; -webkit-text-size-adjust:100%;
+}
+.app{width:100%; max-width:max(calc(var(--cell) * 7 + 8px), 420px); display:flex; flex-direction:column; gap:8px}
+.play{align-self:center}
+header{display:flex; align-items:center; justify-content:space-between; gap:8px}
+h1{font-size:19px; margin:0; font-weight:700; letter-spacing:.2px}
+.bar{display:flex; align-items:center; justify-content:space-between; gap:8px}
+@media (max-height:760px){ h1{position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%)} header{display:contents} }
+@media (min-height:761px){ :root{--reserve:226px} html.train{--reserve:332px} }
+.score{display:flex; align-items:center; gap:6px; font-variant-numeric:tabular-nums; font-weight:700; font-size:16px}
+.dot{width:14px;height:14px;border-radius:50%;display:inline-block}
+.dot.p1{background:var(--p1)} .dot.p2{background:var(--p2)}
+.score small{color:var(--muted); font-weight:500}
+
+.seg{display:grid; grid-template-columns:repeat(3,1fr); background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:3px; gap:3px}
+.seg button{
+  appearance:none; border:0; background:transparent; color:var(--muted); font:inherit; font-weight:600; font-size:13px; white-space:nowrap;
+  padding:8px 2px; border-radius:9px; cursor:pointer; touch-action:manipulation;
+}
+.seg button[aria-pressed="true"]{background:var(--board); color:#fff}
+
+.opts{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+.opts label{display:flex; align-items:center; gap:6px; color:var(--muted); font-size:13px}
+select{
+  font:inherit; font-size:14px; color:var(--text); background:var(--panel); border:1px solid var(--line);
+  border-radius:9px; padding:7px 8px;
+}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--good)}
+[hidden]{display:none !important}
+
+.status{display:flex; align-items:center; gap:8px; font-weight:700; font-size:16px; min-height:24px; min-width:0}
+
+.nums{display:grid; grid-template-columns:repeat(7,var(--cell)); padding:0 4px; height:24px; align-items:center}
+.nums span{
+  justify-self:center; min-width:22px; height:22px; padding:0 5px; border-radius:11px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:700; color:var(--muted);
+}
+.nums span.best{background:var(--good); color:#06240f}
+.nums span.win{background:var(--good); color:#06240f; box-shadow:0 0 0 3px rgba(61,220,132,.3)}
+.nums span.lose{background:rgba(255,107,107,.16); color:var(--bad); text-decoration:line-through}
+
+.board{
+  display:grid; grid-template-columns:repeat(7,var(--cell)); padding:4px;
+  background:linear-gradient(180deg,var(--board-hi),var(--board)); border-radius:16px; overflow:hidden;
+  box-shadow:0 10px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.18);
+  user-select:none; -webkit-user-select:none; touch-action:manipulation;
+}
+.col{appearance:none; border:0; padding:0; margin:0; background:transparent; display:flex; flex-direction:column; cursor:pointer; border-radius:10px; touch-action:manipulation}
+.col:disabled{cursor:default}
+@media (hover:hover){ .col:not(:disabled):hover{background:rgba(255,255,255,.1)} }
+.col:focus-visible{outline:2px solid #fff; outline-offset:-2px}
+.col.hint{background:rgba(61,220,132,.2)}
+.cell{width:var(--cell); height:var(--cell); position:relative}
+.cell::before{content:""; position:absolute; inset:9%; border-radius:50%; background:var(--hole); box-shadow:inset 0 3px 6px rgba(0,0,0,.6)}
+.disc{position:absolute; inset:9%; border-radius:50%; display:none}
+.cell.p1 .disc{display:block; background:radial-gradient(circle at 35% 30%, #ff8a80, var(--p1) 45%, var(--p1-d)); box-shadow:inset 0 0 0 calc(var(--cell) * .07) rgba(0,0,0,.14)}
+.cell.p2 .disc{display:block; background:radial-gradient(circle at 35% 30%, #ffe08a, var(--p2) 45%, var(--p2-d)); box-shadow:inset 0 0 0 calc(var(--cell) * .07) rgba(0,0,0,.12)}
+.cell.drop .disc{animation:drop calc(.07s * var(--n) + .1s) cubic-bezier(.45,0,.9,.55)}
+@keyframes drop{from{transform:translateY(calc(var(--n) * -122%))} to{transform:none}}
+.cell.win .disc{animation:pulse .9s ease-in-out infinite alternate; outline:3px solid #fff; outline-offset:-3px}
+@keyframes pulse{from{filter:brightness(1)} to{filter:brightness(1.35)}}
+.board.over .cell:not(.win) .disc{opacity:.45}
+.cell[data-mark]::after{content:""; position:absolute; border-radius:50%; pointer-events:none}
+.cell[data-mark=ghost]::after{inset:9%; background:var(--p1); opacity:.4; outline:2px dashed #fff; outline-offset:-2px}
+.cell[data-mark=plan]::after{inset:37%; background:var(--good)}
+.cell[data-mark=line]::after{inset:9%; box-shadow:0 0 0 3px var(--good)}
+.cell[data-mark=me]::after{inset:16%; border:3px solid var(--good)}
+.cell[data-mark=opp]::after{inset:16%; border:3px solid var(--bad)}
+
+.coach{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px 10px; font-size:13px; line-height:1.35; min-height:92px}
+.coach .fb{font-weight:700; margin-bottom:2px}
+.coach .fb.good{color:var(--good)} .coach .fb.bad{color:var(--bad)} .coach .fb.mid{color:var(--p2)}
+.coach .tip{color:var(--text)}
+.coach .tip.dim{color:var(--muted)}
+
+.actions{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.btn{
+  appearance:none; font:inherit; font-weight:700; font-size:15px; color:var(--text);
+  background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 8px; cursor:pointer; touch-action:manipulation;
+}
+.btn.primary{background:var(--board); border-color:var(--board-hi); color:#fff}
+.btn:disabled{opacity:.4; cursor:default}
+.btn:active:not(:disabled){transform:translateY(1px)}
+
+details{color:var(--muted); font-size:13px}
+summary{cursor:pointer; padding:4px 0}
+details p{margin:6px 0}
+@media (prefers-reduced-motion:reduce){ .cell.drop .disc,.cell.win .disc{animation:none} }
+</style>
+</head>
+<body>
+<main class="app">
+  <header><h1>Четыре в ряд</h1></header>
+
+  <div class="seg" role="group" aria-label="Режим">
+    <button type="button" data-mode="pvp">Вдвоём</button>
+    <button type="button" data-mode="ai">С компьютером</button>
+    <button type="button" data-mode="train">Обучение</button>
+  </div>
+
+  <div class="bar">
+    <div class="status" id="status" aria-live="polite"></div>
+    <div class="score" aria-label="Счёт">
+      <span class="dot p1"></span><span id="s1">0</span><small>:</small><span id="s2">0</span><span class="dot p2"></span>
+    </div>
+  </div>
+
+  <div class="play">
+    <div class="nums" id="nums" aria-hidden="true"></div>
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="coach" id="coach" aria-live="polite">
+    <div class="fb" id="fb"></div>
+    <div class="tip" id="tip"></div>
+  </div>
+
+  <div class="actions">
+    <button type="button" class="btn primary" id="newBtn">Новая игра</button>
+    <button type="button" class="btn" id="undoBtn">Отменить ход</button>
+  </div>
+
+  <div class="opts" id="opts">
+    <label>Уровень
+      <select id="level">
+        <option value="easy">лёгкий</option>
+        <option value="medium">средний</option>
+        <option value="hard">сильный</option>
+      </select>
+    </label>
+    <label>Первый ход
+      <select id="first">
+        <option value="me">мой</option>
+        <option value="ai">компьютера</option>
+      </select>
+    </label>
+    <label id="hintWrap"><input type="checkbox" id="hintsOn"> подсказка до хода</label>
+  </div>
+
+  <details>
+    <summary>Правила и обозначения</summary>
+    <p>Игроки по очереди бросают фишки в колонки, фишка падает на нижнюю свободную клетку. Побеждает тот, кто первым соберёт четыре своих фишки подряд: по горизонтали, вертикали или диагонали.</p>
+    <p>В обучении над колонками: зелёный номер — сильнейший ход, зелёный с обводкой — выигрывающий, красный зачёркнутый — проигрывающий. После каждого хода тренер оценивает твой выбор.</p>
+    <p>На доске: полупрозрачная фишка — куда ходить; зелёная обводка на твоих фишках и зелёные точки — линия, которую этот ход строит; зелёное кольцо — клетка, где ты соберёшь четыре; красное кольцо — клетка, где четыре соберёт соперник.</p>
+    <p>С клавиатуры: клавиши 1–7 — ход в колонку, N — новая игра, U — отмена.</p>
+  </details>
+</main>
+
+<script>
+(function(){
+"use strict";
+/*ENGINE*/
+var WIN = 1000000;
+var ORDER = [3,2,4,1,5,0,6];
+var DIRS = [[0,1],[1,0],[1,1],[1,-1]];
+var WDIR = [];
+var WINDOWS = (function(){
+  var w = [];
+  for (var r=0;r<6;r++) for (var c=0;c<7;c++) for (var d=0;d<4;d++){
+    var er = r+DIRS[d][0]*3, ec = c+DIRS[d][1]*3;
+    if (er<0||er>5||ec<0||ec>6) continue;
+    WDIR.push(d);
+    for (var k=0;k<4;k++) w.push((r+DIRS[d][0]*k)*7 + c+DIRS[d][1]*k);
+  }
+  return new Int8Array(w);
+})();
+var B = new Int8Array(42);      // 0 пусто, 1 красные, 2 жёлтые; строка 0 — верхняя
+var H = new Int8Array(7);       // следующая свободная строка в колонке, -1 = колонка полна
+var moves = 0;
+
+function resetBoard(){ B.fill(0); H.fill(5); moves = 0; }
+
+function lineCells(r,c,p){
+  for (var d=0;d<4;d++){
+    var dr=DIRS[d][0], dc=DIRS[d][1], cells=[r*7+c], k, rr, cc;
+    for (k=1;k<4;k++){ rr=r+dr*k; cc=c+dc*k; if (rr<0||rr>5||cc<0||cc>6||B[rr*7+cc]!==p) break; cells.push(rr*7+cc); }
+    for (k=1;k<4;k++){ rr=r-dr*k; cc=c-dc*k; if (rr<0||rr>5||cc<0||cc>6||B[rr*7+cc]!==p) break; cells.push(rr*7+cc); }
+    if (cells.length>=4) return cells;
+  }
+  return null;
+}
+function isWin(r,c,p){
+  for (var d=0;d<4;d++){
+    var dr=DIRS[d][0], dc=DIRS[d][1], n=1, k, rr, cc;
+    for (k=1;k<4;k++){ rr=r+dr*k; cc=c+dc*k; if (rr<0||rr>5||cc<0||cc>6||B[rr*7+cc]!==p) break; n++; }
+    for (k=1;k<4;k++){ rr=r-dr*k; cc=c-dc*k; if (rr<0||rr>5||cc<0||cc>6||B[rr*7+cc]!==p) break; n++; }
+    if (n>=4) return true;
+  }
+  return false;
+}
+function evaluate(p){
+  var o=3-p, s=0, i, v;
+  for (i=3;i<42;i+=7){ v=B[i]; if (v===p) s+=3; else if (v===o) s-=3; }
+  for (i=0;i<WINDOWS.length;i+=4){
+    var a=0,b=0;
+    v=B[WINDOWS[i]];   if (v===p) a++; else if (v===o) b++;
+    v=B[WINDOWS[i+1]]; if (v===p) a++; else if (v===o) b++;
+    v=B[WINDOWS[i+2]]; if (v===p) a++; else if (v===o) b++;
+    v=B[WINDOWS[i+3]]; if (v===p) a++; else if (v===o) b++;
+    if (a && b) continue;
+    if (a===3) s+=50; else if (a===2) s+=10; else if (a===1) s+=1;
+    else if (b===3) s-=55; else if (b===2) s-=10; else if (b===1) s-=1;
+  }
+  return s;
+}
+function negamax(depth, alpha, beta, p){
+  if (moves===42) return 0;
+  if (depth===0) return evaluate(p);
+  var best=-Infinity;
+  for (var i=0;i<7;i++){
+    var c=ORDER[i], r=H[c];
+    if (r<0) continue;
+    B[r*7+c]=p; H[c]--; moves++;
+    var s = isWin(r,c,p) ? WIN+depth : -negamax(depth-1, -beta, -alpha, 3-p);
+    B[r*7+c]=0; H[c]++; moves--;
+    if (s>best) best=s;
+    if (s>alpha) alpha=s;
+    if (alpha>=beta) break;
+  }
+  return best;
+}
+// Оценка каждого хода игрока p: null для полной колонки.
+// Победа за k полуходов от текущей позиции = WIN + depth - k; поражение = -(WIN + depth - k).
+function scoreMoves(p, depth){
+  var out=[];
+  for (var c=0;c<7;c++){
+    var r=H[c];
+    if (r<0){ out.push(null); continue; }
+    B[r*7+c]=p; H[c]--; moves++;
+    var s = isWin(r,c,p) ? WIN+depth : -negamax(depth-1, -Infinity, Infinity, 3-p);
+    B[r*7+c]=0; H[c]++; moves--;
+    out.push(s);
+  }
+  return out;
+}
+function immediateWins(p){
+  var out=[];
+  for (var c=0;c<7;c++){
+    var r=H[c]; if (r<0) continue;
+    B[r*7+c]=p; var w=isWin(r,c,p); B[r*7+c]=0;
+    if (w) out.push(c);
+  }
+  return out;
+}
+function pickBest(sc, randomTies){
+  var best=-Infinity, c;
+  for (c=0;c<7;c++) if (sc[c]!==null && sc[c]>best) best=sc[c];
+  var cand=[];
+  for (var i=0;i<7;i++){ c=ORDER[i]; if (sc[c]===best) cand.push(c); }
+  return randomTies ? cand[Math.floor(Math.random()*cand.length)] : cand[0];
+}
+// Линии, которые начинает или продолжает ход игрока p в колонку c: до двух, в разных направлениях.
+function planLines(p, c){
+  var r=H[c]; if (r<0) return [];
+  var idx=r*7+c, byDir={}, i, k;
+  B[idx]=p;
+  for (i=0;i<WINDOWS.length;i+=4){
+    var has=false, a=0, b=0;
+    for (k=0;k<4;k++){ var w=WINDOWS[i+k]; if (w===idx) has=true; if (B[w]===p) a++; else if (B[w]!==0) b++; }
+    if (!has || b || a<2) continue;
+    var d=WDIR[i>>2];
+    if (!byDir[d] || a>byDir[d].a) byDir[d]={a:a, cells:[WINDOWS[i],WINDOWS[i+1],WINDOWS[i+2],WINDOWS[i+3]]};
+  }
+  B[idx]=0;
+  return Object.keys(byDir).map(function(d){ return byDir[d]; }).sort(function(x,y){ return y.a-x.a; }).slice(0,2);
+}
+// Пустые клетки, которые достраивают игроку p четвёрку (в том числе пока недоступные).
+function threatCells(p){
+  var out={}, i, k;
+  for (i=0;i<WINDOWS.length;i+=4){
+    var a=0, e=-1, n=0;
+    for (k=0;k<4;k++){ var w=WINDOWS[i+k]; if (B[w]===p) a++; else if (B[w]===0){ e=w; n++; } }
+    if (a===3 && n===1) out[e]=1;
+  }
+  return out;
+}
+var LEVEL_DEPTH = {easy:2, medium:4, hard:8};
+function aiChoose(p, level){
+  var depth = LEVEL_DEPTH[level] || 4;
+  var sc = scoreMoves(p, depth);
+  if (level==='easy' && Math.random()<0.3){
+    var best = pickBest(sc, false);
+    if (sc[best] < WIN){                       // победу в один ход не упускает даже лёгкий уровень
+      var free=[]; for (var c=0;c<7;c++) if (sc[c]!==null) free.push(c);
+      return free[Math.floor(Math.random()*free.length)];
+    }
+  }
+  return pickBest(sc, level!=='hard' || moves>1);
+}
+/*END*/
+if (typeof document === 'undefined'){            // запуск вне браузера — только для самопроверки движка
+  globalThis.__c4 = {B:B,H:H,resetBoard:resetBoard,isWin:isWin,lineCells:lineCells,scoreMoves:scoreMoves,
+    aiChoose:aiChoose,immediateWins:immediateWins,pickBest:pickBest,WIN:WIN,
+    drop:function(c,p){var r=H[c];B[r*7+c]=p;H[c]--;moves++;return r;}, count:function(){return moves;}};
+  return;
+}
+
+/* ---------- состояние ---------- */
+var AI = 2, HINT_DEPTH = 8;
+var mode='ai', level='medium', first='me', hintsOn=true;
+var cur=1, over=false, winner=0, winLine=null, hist=[], last=null;
+var busy=false, pending=false, hints=null, feedback=null, tick=0;
+var score=[0,0,0];
+
+function load(){
+  try{
+    var s = JSON.parse(localStorage.getItem('c4-settings')||'null');
+    if (!s) return;
+    if (['pvp','ai','train'].indexOf(s.mode)>=0) mode=s.mode;
+    if (LEVEL_DEPTH[s.level]) level=s.level;
+    if (s.first==='me'||s.first==='ai') first=s.first;
+    if (typeof s.hintsOn==='boolean') hintsOn=s.hintsOn;
+    if (Array.isArray(s.score) && s.score.length===3) score=s.score.map(function(n){return n|0;});
+  }catch(e){}
+}
+function save(){
+  try{ localStorage.setItem('c4-settings', JSON.stringify({mode:mode,level:level,first:first,hintsOn:hintsOn,score:score})); }catch(e){}
+}
+
+/* ---------- DOM ---------- */
+var $ = function(id){ return document.getElementById(id); };
+var boardEl=$('board'), numsEl=$('nums'), statusEl=$('status'), coachEl=$('coach'), fbEl=$('fb'), tipEl=$('tip');
+var colEls=[], cellEls=new Array(42), numEls=[];
+(function build(){
+  for (var c=0;c<7;c++){
+    var n=document.createElement('span'); n.textContent=c+1; numsEl.appendChild(n); numEls.push(n);
+    var col=document.createElement('button'); col.type='button'; col.className='col';
+    col.setAttribute('aria-label','Колонка '+(c+1)); col.dataset.c=c;
+    for (var r=0;r<6;r++){
+      var cell=document.createElement('div'); cell.className='cell';
+      var disc=document.createElement('div'); disc.className='disc'; cell.appendChild(disc);
+      col.appendChild(cell); cellEls[r*7+c]=cell;
+    }
+    boardEl.appendChild(col); colEls.push(col);
+  }
+})();
+
+/* ---------- логика партии ---------- */
+function isAiTurn(){ return mode!=='pvp' && cur===AI; }
+
+function newGame(){
+  tick++; resetBoard();
+  hist=[]; over=false; winner=0; winLine=null; last=null; feedback=null; hints=null;
+  cur = (mode==='pvp' || first==='me') ? 1 : 2;
+  step(false);
+}
+
+function play(c){
+  var r=H[c]; if (over || r<0) return;
+  var p=cur;
+  B[r*7+c]=p; H[c]--; moves++; hist.push(c); last=r*7+c; tick++;
+  var line=lineCells(r,c,p);
+  if (line){ over=true; winner=p; winLine=line; score[p]++; save(); }
+  else if (moves===42){ over=true; winner=0; }
+  else cur=3-p;
+  step(true);
+}
+
+function step(animate){
+  hints=null; pending=false; busy=false;
+  var t=tick;
+  if (!over && isAiTurn()){
+    busy=true; renderBoard(animate); renderInfo();
+    setTimeout(function(){
+      if (t!==tick) return;
+      var c=aiChoose(AI, level);
+      busy=false; play(c);
+    }, 480);
+  } else if (!over && mode==='train'){
+    pending=true; renderBoard(animate); renderInfo();
+    setTimeout(function(){
+      if (t!==tick) return;
+      hints=computeHints(); pending=false; renderInfo();
+    }, 60);
+  } else { renderBoard(animate); renderInfo(); }
+}
+
+function popMove(){
+  var c=hist.pop(); H[c]++; var r=H[c]; cur=B[r*7+c]; B[r*7+c]=0; moves--;
+}
+function canUndo(){
+  if (busy) return false;
+  return hist.length > ((mode!=='pvp' && first==='ai') ? 1 : 0);
+}
+function undo(){
+  if (!canUndo()) return;
+  if (over && winner){ score[winner]=Math.max(0,score[winner]-1); save(); }
+  over=false; winner=0; winLine=null; last=null; feedback=null; tick++;
+  popMove();
+  if (isAiTurn() && hist.length) popMove();
+  step(false);
+}
+
+function onColumn(c){
+  if (busy || over || isAiTurn() || H[c]<0) return;
+  feedback = (mode==='train' && hints) ? judge(c) : null;
+  play(c);
+}
+
+/* ---------- тренер ---------- */
+function list(cols){
+  var a=cols.map(function(c){return c+1;});
+  if (a.length<2) return String(a[0]);
+  return a.slice(0,-1).join(', ')+' и '+a[a.length-1];
+}
+function plural(n, one, few, many){
+  var a=n%10, b=n%100;
+  if (a===1 && b!==11) return one;
+  if (a>=2 && a<=4 && (b<12||b>14)) return few;
+  return many;
+}
+function computeHints(){
+  var p=cur, D=HINT_DEPTH, sc=scoreMoves(p,D), best=pickBest(sc,false), bs=sc[best];
+  var kinds=[], losingNow=[], c;
+  for (c=0;c<7;c++){
+    var s=sc[c];
+    if (s===null) kinds.push(null);
+    else if (s>=WIN) kinds.push('win');
+    else if (s<=-WIN && bs>-WIN) kinds.push('lose');
+    else if (s===bs) kinds.push('best');
+    else kinds.push('ok');
+    if (s!==null && s===-(WIN+D-1)) losingNow.push(c);
+  }
+  var threats=immediateWins(3-p), text;
+  if (bs>=WIN+D){
+    text='Колонка '+(best+1)+' собирает четыре в ряд — забирай победу.';
+  } else if (threats.length>=2){
+    text='Соперник поставил вилку: угрозы в колонках '+list(threats)+'. Обе закрыть нельзя — запомни, как она получилась.';
+  } else if (threats.length===1){
+    text='Соперник грозит собрать четыре в колонке '+(threats[0]+1)+'. Закрой её — любой другой ход проигрывает сразу.';
+  } else if (bs>=WIN){
+    var n=Math.floor((D-(bs-WIN))/2)+1;
+    text='Колонка '+(best+1)+' запускает форсированную победу: не больше '+n+' '+plural(n,'твоего хода','твоих ходов','твоих ходов')+', что бы ни делал соперник.';
+  } else if (bs<=-WIN){
+    text='Позиция тяжёлая: при точной игре соперник выигрывает. Дольше всего держится колонка '+(best+1)+'.';
+  } else {
+    text='Сильнейший ход — колонка '+(best+1)+'. '+(best===3
+      ? 'Центр участвует в наибольшем числе возможных четвёрок.'
+      : 'Он даёт тебе больше открытых линий и не оставляет сопернику удобных клеток.');
+    if (losingNow.length && bs>-WIN)
+      text+=' Не ходи в '+list(losingNow)+': твоя фишка станет подставкой, и соперник выиграет следующим ходом.';
+  }
+  var marks={}, i, plan=planLines(p,best), mine=threatCells(p), theirs=threatCells(3-p);
+  for (i in theirs) marks[i]='opp';
+  for (i in mine) marks[i]='me';
+  plan.forEach(function(l){ l.cells.forEach(function(q){
+    if (B[q]===p) marks[q]='line'; else if (marks[q]!=='me') marks[q]='plan';
+  }); });
+  marks[H[best]*7+best]='ghost';
+  if (bs<WIN+D && threats.length===0 && bs>-WIN){
+    if (plan.length===2) text+=' Этот ход ставит угол: в клетке сходятся две линии. Зелёные точки — что достроить дальше.';
+    else if (plan.length===1) text+=' Зелёные точки — клетки, которые достраивают эту линию.';
+  }
+  return {scores:sc, kinds:kinds, best:best, text:text, depth:D, marks:marks};
+}
+function judge(c){
+  var sc=hints.scores, s=sc[c], b=hints.best, bs=sc[b];
+  if (s>=WIN+hints.depth) return null;
+  if (s===bs) return {cls:'good', text:'Отличный ход — сильнейший в позиции.'};
+  if (s>=WIN) return {cls:'good', text:'Хороший ход: победа по-прежнему форсирована, хотя колонка '+(b+1)+' вела к ней быстрее.'};
+  if (bs>=WIN) return {cls:'bad', text:'Упущена победа: колонка '+(b+1)+' выигрывала форсированно.'};
+  if (s<=-WIN && bs>-WIN) return {cls:'bad', text:'Ошибка: после этого хода соперник выигрывает при точной игре. Сильнее была колонка '+(b+1)+'.'};
+  if (bs-s>=40) return {cls:'mid', text:'Неточность: колонка '+(b+1)+' была заметно сильнее.'};
+  return {cls:'good', text:'Хороший ход.'};
+}
+
+/* ---------- отрисовка ---------- */
+function renderBoard(animate){
+  var winSet={}; if (winLine) winLine.forEach(function(i){ winSet[i]=1; });
+  for (var i=0;i<42;i++){
+    var v=B[i], cls='cell'+(v?' p'+v:'')+(winSet[i]?' win':'');
+    if (animate && i===last){ cls+=' drop'; cellEls[i].style.setProperty('--n', Math.floor(i/7)+1); }
+    if (cellEls[i].className!==cls) cellEls[i].className=cls;
+  }
+  boardEl.classList.toggle('over', over && !!winLine);
+}
+function renderInfo(){
+  var vsAi = mode!=='pvp', showHints = mode==='train' && hintsOn && hints && !over && !busy;
+  $('s1').textContent=score[1]; $('s2').textContent=score[2];
+  document.querySelectorAll('.seg button').forEach(function(b){ b.setAttribute('aria-pressed', String(b.dataset.mode===mode)); });
+  $('opts').hidden=!vsAi; $('hintWrap').hidden=mode!=='train';
+  $('level').value=level; $('first').value=first; $('hintsOn').checked=hintsOn;
+  $('undoBtn').disabled=!canUndo();
+
+  var text, dot=0;
+  if (over){
+    if (!winner) text='Ничья — доска заполнена';
+    else { dot=winner; text = vsAi ? (winner===AI ? 'Компьютер выиграл' : 'Ты выиграл') : (winner===1 ? 'Победили красные' : 'Победили жёлтые'); }
+  } else {
+    dot=cur;
+    text = vsAi ? (cur===AI ? 'Компьютер думает…' : 'Твой ход') : (cur===1 ? 'Ход красных' : 'Ход жёлтых');
+  }
+  statusEl.innerHTML='';
+  if (dot){ var d=document.createElement('span'); d.className='dot p'+dot; statusEl.appendChild(d); }
+  statusEl.appendChild(document.createTextNode(text));
+
+  for (var c=0;c<7;c++){
+    var k = showHints ? hints.kinds[c] : null;
+    numEls[c].className = (k && k!=='ok') ? k : '';
+    colEls[c].classList.toggle('hint', !!showHints && c===hints.best);
+    colEls[c].disabled = over || busy || H[c]<0 || isAiTurn();
+  }
+
+  for (var i=0;i<42;i++){
+    var m = showHints ? (hints.marks[i]||'') : '';
+    if ((cellEls[i].getAttribute('data-mark')||'')!==m){ if (m) cellEls[i].setAttribute('data-mark',m); else cellEls[i].removeAttribute('data-mark'); }
+  }
+  coachEl.hidden = mode!=='train';
+  document.documentElement.classList.toggle('train', mode==='train');
+  if (mode==='train'){
+    fbEl.className='fb'+(feedback?' '+feedback.cls:''); fbEl.textContent=feedback?feedback.text:'';
+    tipEl.className='tip';
+    if (over) tipEl.textContent = winner===1 ? 'Партия выиграна. Попробуй уровень выше или отдай первый ход компьютеру.'
+                               : winner===AI ? 'Отмени ход и найди место, где партия свернула не туда.' : 'Ничья — плотная партия.';
+    else if (busy){ tipEl.className='tip dim'; tipEl.textContent='Компьютер выбирает ход…'; }
+    else if (pending){ tipEl.className='tip dim'; tipEl.textContent='Считаю варианты…'; }
+    else if (!hintsOn){ tipEl.className='tip dim'; tipEl.textContent='Подсказка скрыта: сделай ход, оценю после.'; }
+    else tipEl.textContent = hints ? hints.text : '';
+  }
+}
+
+/* ---------- события ---------- */
+boardEl.addEventListener('click', function(e){
+  var col=e.target.closest('.col'); if (col) onColumn(+col.dataset.c);
+});
+document.querySelector('.seg').addEventListener('click', function(e){
+  var b=e.target.closest('button'); if (!b || b.dataset.mode===mode) return;
+  mode=b.dataset.mode; score=[0,0,0]; save(); newGame();
+});
+$('level').addEventListener('change', function(){ level=this.value; save(); });
+$('first').addEventListener('change', function(){ first=this.value; save(); newGame(); });
+$('hintsOn').addEventListener('change', function(){ hintsOn=this.checked; save(); renderInfo(); });
+$('newBtn').addEventListener('click', newGame);
+$('undoBtn').addEventListener('click', undo);
+document.addEventListener('keydown', function(e){
+  if (e.metaKey||e.ctrlKey||e.altKey || /^(SELECT|INPUT)$/.test(e.target.tagName)) return;
+  if (e.key>='1' && e.key<='7') onColumn(+e.key-1);
+  else if (e.code==='KeyN') newGame();
+  else if (e.code==='KeyU') undo();
+});
+document.addEventListener('dblclick', function(e){ e.preventDefault(); }, {passive:false});
+
+load(); newGame();
+})();
+</script>
+</body>
+</html>
