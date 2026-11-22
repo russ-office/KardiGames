@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#79c4f2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Area Quest">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Block Builder: Area Quest</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Rubik:wght@700;800&display=swap&subset=cyrillic">
+<style>
+:root{--ink:#1b1b1b;--stone:#a7a7a7;--stone-l:#d2d2d2;--stone-d:#6b6b6b;--grass:#5fae3c;--grass-d:#3d7d22;--dirt:#8b5a2f;--gold:#f7d046;--gold-d:#c7951a;--dia:#47e0d6;--red:#d94a3a;--sky1:#79c4f2;--sky2:#cdeeff}
+*{box-sizing:border-box}
+html,body{margin:0}
+html{-webkit-text-size-adjust:100%}
+button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+body{font-family:'Nunito',system-ui,-apple-system,sans-serif;font-weight:700;font-size:20px;line-height:1.45;color:var(--ink);background:linear-gradient(var(--sky1),var(--sky2) 75%) fixed;min-height:100vh;padding-bottom:80px}
+body:after{content:"";position:fixed;left:0;right:0;bottom:0;height:46px;background:linear-gradient(var(--grass) 0 12px,var(--grass-d) 12px 16px,var(--dirt) 16px);z-index:0;pointer-events:none}
+.wrap{max-width:860px;margin:0 auto;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));position:relative;z-index:1}
+h1,h2,h3{font-family:'Rubik',sans-serif;font-weight:800;margin:0}
+h1{font-size:30px;letter-spacing:1px;text-shadow:3px 3px 0 #fff}
+h2{font-size:21px;flex:1}
+h3{font-size:19px;margin-bottom:10px}
+.panel{background:var(--stone-l);border:4px solid var(--ink);box-shadow:inset -5px -5px 0 var(--stone-d),inset 5px 5px 0 #f0f0f0;padding:16px;margin:12px 0}
+.panel.dark{background:#3b3b3b;color:#fff;box-shadow:inset -5px -5px 0 #222,inset 5px 5px 0 #5a5a5a}
+.btn{font:inherit;font-weight:800;font-size:19px;cursor:pointer;background:var(--stone);color:var(--ink);border:3px solid var(--ink);box-shadow:inset -3px -3px 0 var(--stone-d),inset 3px 3px 0 #e6e6e6;padding:9px 16px;min-height:48px;line-height:1.2}
+@media (hover:hover){.btn:hover{background:#bababa}}
+.btn:active{box-shadow:inset 3px 3px 0 var(--stone-d);transform:translateY(1px)}
+.btn[disabled]{opacity:.4;cursor:default}
+.btn.go{background:var(--grass);color:#fff;box-shadow:inset -3px -3px 0 var(--grass-d),inset 3px 3px 0 #8fd26a}
+.btn.goldb{background:var(--gold);box-shadow:inset -3px -3px 0 var(--gold-d),inset 3px 3px 0 #fff1a8}
+.btn.sel{background:var(--dia);box-shadow:inset -3px -3px 0 #1f9e96,inset 3px 3px 0 #b5fffa}
+.btn.right{background:var(--grass);color:#fff}
+.btn.wrong{background:var(--red);color:#fff}
+.btn.big{font-size:26px;padding:14px 30px}
+.hidden{display:none!important}
+.screen{display:none}.screen.on{display:block}
+.en{font-weight:600;color:#666;font-size:.8em}
+/* HUD */
+.hud{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+.stat{background:#2b2b2b;color:#fff;border:3px solid var(--ink);padding:6px 12px;font-weight:900;display:flex;gap:8px;align-items:center}
+.gem{width:14px;height:14px;display:inline-block;background:var(--dia);transform:rotate(45deg);border:2px solid #0d6d67;box-shadow:inset 3px 3px 0 #c9fffb;margin:0 4px;vertical-align:middle}
+.xpbar{flex:1;min-width:120px;height:22px;background:#2b2b2b;border:3px solid var(--ink);position:relative}
+.xpbar i{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(#a8f77a,#5fbf2f);width:0;transition:width .5s}
+/* bot */
+.say{display:flex;gap:14px;align-items:center}
+.bot{width:70px;height:70px;flex:none;shape-rendering:crispEdges}
+.bubble{background:#fff;border:3px solid var(--ink);padding:12px 14px;position:relative;flex:1;font-size:21px;min-height:70px}
+.bubble:before{content:"";position:absolute;left:-15px;top:50%;margin-top:-8px;border:8px solid transparent;border-right-color:var(--ink)}
+.bubble b{color:#1c5fa8}
+/* home */
+.map{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.tile{display:flex;gap:12px;align-items:center;text-align:left;padding:12px}
+.tile .ic{width:50px;height:50px;flex:none;border:3px solid var(--ink)}
+.ic.grass{background:linear-gradient(var(--grass) 0 35%,var(--dirt) 35%)}
+.ic.gold{background:var(--gold);box-shadow:inset -6px -6px 0 var(--gold-d)}
+.ic.stack{background:linear-gradient(var(--gold) 0 33%,var(--grass) 33% 66%,var(--grass-d) 66%)}
+.ic.boss{background:#5a2b7a;box-shadow:inset -6px -6px 0 #3a1650}
+.tile small{display:block;font-weight:600;font-size:16px;opacity:.8}
+.tile .done{display:block;color:var(--grass-d);font-size:16px}
+.how{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;font-size:17px}
+.how div{background:#fff;border:3px solid var(--ink);padding:10px 4px}
+.how b{display:block;font-size:30px;line-height:1.2}
+@media (max-width:560px){.how{grid-template-columns:repeat(2,1fr)}}
+/* world */
+.topbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tag{background:#fff;border:3px solid var(--ink);padding:3px 10px;font-size:16px}
+.phases{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.phases .btn{font-size:17px;padding:8px 4px}
+.phases .btn.on{background:var(--gold);box-shadow:inset -3px -3px 0 var(--gold-d),inset 3px 3px 0 #fff1a8}
+.dots{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.dots i{width:22px;height:22px;border:3px solid var(--ink);background:#999}.dots i.past{background:var(--grass)}.dots i.now{background:var(--gold)}
+.viz{width:100%;height:auto;display:block;background:#bfe6ff;border:4px solid var(--ink);margin:12px 0;max-height:440px}
+.viz text{font-family:'Nunito',sans-serif;font-weight:900;fill:#1b1b1b}
+.formula{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:28px;font-weight:900;background:#fff;border:3px solid var(--ink);padding:10px 14px;min-height:64px;margin:8px 0}
+.formula .eq{opacity:.55}
+.st{display:inline-flex;align-items:center;animation:pop .35s both}
+.chip{padding:2px 10px;border:3px solid var(--ink);display:inline-flex;align-items:center;gap:3px}
+.chip.g{background:#a6e07f}.chip.y{background:var(--gold)}.chip.b{background:var(--dia)}
+.fr{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.05;margin:0 3px;font-size:.85em}
+.fr span:first-child{border-bottom:3px solid currentColor;padding:0 4px}
+.mx{display:inline-flex;align-items:center}
+@keyframes pop{from{transform:scale(.5);opacity:0}to{transform:none;opacity:1}}
+.ask{margin-top:8px}
+.ask .qq{font-size:22px;font-weight:900;margin-bottom:8px}
+.ask .opts{display:flex;flex-wrap:wrap;gap:8px}
+.ask .opts .btn{font-size:24px;min-width:64px}
+.nav{display:flex;justify-content:space-between;gap:8px;margin-top:14px}
+.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:6px}
+.stepper{display:flex;flex-direction:column;align-items:center;gap:3px}
+.stepper .row{display:flex;align-items:center}
+.stepper b{min-width:52px;text-align:center;font-size:24px;background:#fff;border-top:3px solid var(--ink);border-bottom:3px solid var(--ink);height:48px;line-height:42px}
+.stepper .btn{padding:0;width:48px;font-size:24px}
+.stepper label{font-size:16px}
+.readout{font-size:24px;font-weight:900;background:#fff;border:3px solid var(--ink);padding:4px 12px;min-height:48px;display:flex;align-items:center;gap:6px}
+.toggles{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+/* trainer */
+.tr-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.pips{display:flex;gap:5px}.pips i{width:22px;height:22px;border:3px solid var(--ink);background:#999}.pips i.ok{background:var(--grass)}.pips i.no{background:var(--red)}.pips i.now{background:#fff}
+.q{font-size:26px;font-weight:900;margin:12px 0;line-height:1.6}
+.ans-in{font:inherit;font-size:30px;font-weight:900;width:210px;max-width:100%;padding:6px 12px;border:3px solid var(--ink);background:#fff;min-height:56px}
+.keys{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:440px;margin-top:8px}
+.keys .btn{padding:0;font-size:24px}
+.tip{font-size:16px;opacity:.8;margin-top:6px}
+.opts.col{display:flex;flex-direction:column;gap:8px}.opts.col .btn{text-align:left;font-size:22px}
+.fb{margin-top:12px;padding:10px 14px;border:3px solid var(--ink);display:none;font-size:21px;line-height:1.7}
+.fb.ok{display:block;background:#c2f2a6}.fb.no{display:block;background:#ffd6cd}.fb.hint{display:block;background:#fff3b8}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.result{text-align:center;padding:10px}
+.result .big{font-family:'Rubik',sans-serif;font-size:28px}
+.result .score{font-size:50px;font-weight:900;margin:6px 0}
+.result.win .big{color:var(--grass-d)}
+.hp{display:flex;gap:6px;margin-top:8px}.hp i{width:28px;height:28px;background:#e04848;border:3px solid #000;box-shadow:inset -4px -4px 0 #9a2020}.hp i.lost{background:#555;box-shadow:none}
+table.found{border-collapse:collapse;width:100%;margin-top:10px;background:#fff;font-size:21px}
+table.found th,table.found td{border:3px solid var(--ink);padding:6px 8px;text-align:center}
+table.found th{background:#ddd;font-size:16px}
+.foot{font-size:16px;text-align:center;opacity:.85;margin-top:10px}
+.small{font-size:15px;padding:4px 10px;min-height:34px}
+.ph-s{display:none}
+@media (max-width:600px){
+ body{font-size:18px;padding-bottom:0}body:after{display:none}
+ .wrap{padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right))}
+ .panel{padding:12px;margin:8px 0;border-width:3px}
+ h1{font-size:24px}h2{font-size:18px}h3{font-size:17px}
+ .topbar{gap:8px}.topbar .btn{padding:6px 10px;min-height:42px;font-size:16px}.tag{font-size:13px;padding:2px 8px}
+ .phases .btn{font-size:16px;padding:6px 2px;min-height:46px}.ph-l{display:none}.ph-s{display:inline}
+ .say{gap:10px}.bot{width:46px;height:46px}.bubble{font-size:18px;padding:10px 12px;min-height:0}
+ .viz{margin:8px 0;border-width:3px}
+ .formula{font-size:21px;gap:4px;padding:8px 10px;min-height:0}.chip{padding:1px 6px}
+ .ask .qq{font-size:19px}.ask .opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ask .opts .btn{font-size:24px;min-height:54px}
+ .nav{position:sticky;bottom:0;z-index:5;background:var(--stone-l);margin:12px -12px -12px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:3px solid var(--ink)}
+ .nav .btn{min-height:52px;font-size:18px}.nav .nextb{flex:1}
+ .controls{gap:8px}.stepper b{min-width:40px;font-size:22px;height:46px;line-height:40px}.stepper .btn{width:44px;min-height:46px}.stepper label{font-size:14px}.readout{font-size:20px;min-height:46px}
+ .q{font-size:22px;margin:8px 0}.ans-in{width:100%;font-size:28px}
+ .keys{grid-template-columns:repeat(5,1fr);max-width:none;gap:6px}.keys .btn{min-height:52px}
+ .opts.col .btn{font-size:21px;min-height:52px}
+ .ctl .btn{flex:1 1 auto;min-height:52px}
+ .fb{font-size:18px}
+ .how{grid-template-columns:repeat(2,1fr);font-size:16px}.map{grid-template-columns:1fr}
+ table.found{font-size:17px}table.found th{font-size:13px}
+ .result .big{font-size:24px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <defs>
+  <pattern id="pg" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#5fae3c"/><rect width="4" height="4" fill="#6dc046"/><rect x="5" y="5" width="2" height="2" fill="#4a922e"/></pattern>
+  <pattern id="py" width="8" height="8" patternUnits="userSpaceOnUse"><rect width="8" height="8" fill="#f7d046"/><rect x="4" width="4" height="4" fill="#ffe27a"/><rect y="5" width="2" height="2" fill="#d6a628"/></pattern>
+ </defs>
+</svg>
+
+<div class="wrap">
+
+<!-- ============ HOME ============ -->
+<section id="home" class="screen">
+ <div class="panel">
+  <h1>BLOCK BUILDER</h1>
+  <div style="font-size:20px;margin-top:4px">Площадь, когда сторона — дробь <span class="en">(area with fractional side lengths)</span></div>
+  <div class="hud">
+   <span class="stat">УР. <span class="js-lvl">1</span></span>
+   <div class="xpbar"><i class="js-xp"></i></div>
+   <span class="stat"><span class="gem"></span><span class="js-gems">0</span></span>
+  </div>
+ </div>
+ <div class="panel say">
+  <svg class="bot" data-sprite="bit"></svg>
+  <div class="bubble">Привет, Давид! Я <b>Бит</b>. Я покажу тебе всё по шагам — просто нажимай кнопки.<br>Начни с Мира 1 👇</div>
+ </div>
+ <div style="text-align:center;margin:6px 0 4px"><button class="btn go big" data-go="world-1">▶ НАЧАТЬ</button></div>
+ <div class="panel">
+  <h3>Как учиться</h3>
+  <div class="how">
+   <div><b>1</b>Урок<br>Бит объясняет по шагам</div>
+   <div><b>2</b>Попробуй сам<br>меняй числа</div>
+   <div><b>3</b>Тренировка<br>5 вопросов</div>
+   <div><b>4</b>Листок<br>реши на бумаге</div>
+  </div>
+ </div>
+ <div class="map">
+  <button class="btn tile" data-go="world-1"><span class="ic grass"></span><span>Мир 1 · Тонкие полоски<small>ширина 1/4, 1/3… · Part A</small><span class="done" data-done="w1"></span></span></button>
+  <button class="btn tile" data-go="world-2"><span class="ic gold"></span><span>Мир 2 · Золотые кусочки<small>ширина 2/3, 3/4… · Part B</small><span class="done" data-done="w2"></span></span></button>
+  <button class="btn tile" data-go="world-3"><span class="ic stack"></span><span>Мир 3 · Высокие постройки<small>ширина 1 2/5… · Part C</small><span class="done" data-done="w3"></span></span></button>
+  <button class="btn tile" data-go="boss"><span class="ic boss"></span><span>БОСС · Разделитель<small>Challenge</small><span class="done" data-done="boss"></span></span></button>
+ </div>
+ <div class="foot">Числа в игре другие, чем в листке. Листок решаешь сам!<br><button class="btn small" id="reset">сбросить прогресс</button></div>
+</section>
+
+<!-- ============ WORLDS (built by script) ============ -->
+<section id="world-1" class="screen"></section>
+<section id="world-2" class="screen"></section>
+<section id="world-3" class="screen"></section>
+
+<!-- ============ BOSS ============ -->
+<section id="boss" class="screen">
+ <div class="panel topbar"><button class="btn" data-go="home">◀ Карта</button><h2>БОСС · Разделитель</h2><span class="tag">📝 Листок: Challenge №11</span></div>
+ <div class="panel dark say">
+  <svg class="bot" data-sprite="boss"></svg>
+  <div style="flex:1"><div class="q" id="bq" style="margin:0"></div><div class="hp" id="bhp"></div></div>
+ </div>
+ <div class="panel say"><svg class="bot" data-sprite="bit"></svg><div class="bubble" id="bsay"></div></div>
+ <div class="panel">
+  <h3>⚔ Построй прямоугольник</h3>
+  <div class="controls" id="cb"></div>
+  <div class="q" style="margin:4px 0">Другая сторона = ?</div>
+  <input class="ans-in" id="bin" autocomplete="off" inputmode="none" placeholder="например 4/3">
+  <div class="keys" id="bkeys"></div>
+  <div class="ctl"><button class="btn go" id="bcheck">⚔ Атака!</button><button class="btn" id="bhint">💡 Подсказка</button><button class="btn hidden" id="bnew">↻ Новый босс</button></div>
+  <div class="fb" id="bfb"></div>
+  <svg class="viz hidden" id="vb"></svg>
+  <table class="found"><thead><tr><th>Целая сторона</th><th>Дробная сторона</th><th>Выражение</th></tr></thead><tbody id="btab"></tbody></table>
+ </div>
+</section>
+
+</div>
+
+<script>
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const gcd=(a,b)=>b?gcd(b,a%b):Math.abs(a);
+const fr=(n,d)=>`<span class="fr"><span>${n}</span><span>${d}</span></span>`;
+function mixed(n,d){const w=Math.floor(n/d),r=n%d;if(r===0)return `${w}`;if(w===0)return fr(r,d);return `<span class="mx">${w}${fr(r,d)}</span>`}
+const wfr=(w,a,d)=>a?(w?`<span class="mx">${w}${fr(a,d)}</span>`:fr(a,d)):`${w}`;
+const both=(n,d)=>fr(n,d)+(n>=d?' = '+mixed(n,d):'');
+const chip=(c,h)=>`<span class="chip ${c}">${h}</span>`;
+function parseAns(s){
+ s=(s||'').trim().replace(/[⁄÷]/g,'/').replace(/\s+/g,' ');let m;
+ if(m=s.match(/^(\d+)$/))return{n:+m[1],d:1,form:'whole'};
+ if(m=s.match(/^(\d+) ?\/ ?(\d+)$/))return +m[2]?{n:+m[1],d:+m[2],form:'fraction'}:null;
+ if(m=s.match(/^(\d+) (\d+) ?\/ ?(\d+)$/)){const d=+m[3];if(!d)return null;return{n:+m[1]*d+ +m[2],d,form:+m[2]<d?'mixed':'badmixed'}}
+ return null}
+const eq=(p,n,d)=>!!p&&p.n*d===n*p.d;
+const PRAISE=['Отлично!','Мастер-строитель!','Точно!','Алмазный мозг!','Супер!','Есть!'];
+const KEYS=['1','2','3','4','5','6','7','8','9','0','/','␣','⌫'];
+
+/* ---------- progress ---------- */
+const S={xp:0,gems:0,done:{}};
+try{Object.assign(S,JSON.parse(localStorage.getItem('areaQuestRU')||'{}'))}catch(e){}
+function save(){try{localStorage.setItem('areaQuestRU',JSON.stringify(S))}catch(e){}}
+function hud(){
+ document.querySelectorAll('.js-gems').forEach(e=>e.textContent=S.gems);
+ document.querySelectorAll('.js-lvl').forEach(e=>e.textContent=Math.floor(S.xp/100)+1);
+ document.querySelectorAll('.js-xp').forEach(e=>e.style.width=(S.xp%100)+'%');
+ document.querySelectorAll('[data-done]').forEach(e=>e.textContent=S.done[e.dataset.done]?'✔ ПРОЙДЕН':'');
+}
+function reward(xp,g){S.xp+=xp;S.gems+=g;save();hud()}
+
+/* ---------- sprites (original pixel art) ---------- */
+const SPR={
+ bit:{m:["....yy....","....kk....",".kkkkkkkk.",".kcccccck.",".kweccwek.",".kcccccck.",".kcmmmmck.",".kcccccck.",".kkkkkkkk.","..kk..kk.."],c:{k:'#1b1b1b',c:'#6fd3ff',y:'#ffd84a',w:'#fff',e:'#1b1b1b',m:'#2a6f8f'}},
+ boss:{m:["kkkkkkkkkk","kyyyyyyyyk","kyrryyrryk","kyywyywyyk","kyyyyyyyyk","kyykkkkyyk","kykyyyykyk","kyyyyyyyyk","kddddddddk","kkkkkkkkkk"],c:{k:'#1b1b1b',y:'#f7d046',d:'#c7951a',r:'#d94a3a',w:'#fff'}}
+};
+function sprite(svg,name){const s=SPR[name];let h='';s.m.forEach((row,y)=>[...row].forEach((ch,x)=>{if(ch!=='.')h+=`<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${s.c[ch]}"/>`}));svg.setAttribute('viewBox','0 0 10 10');svg.innerHTML=h}
+
+/* ---------- area drawing ---------- */
+function svgFrac(x,y,n,d,fs){const w=fs*0.62*Math.max(String(n).length,String(d).length)+8;
+ return `<text x="${x}" y="${y-5}" font-size="${fs}" text-anchor="middle">${n}</text><rect x="${x-w/2}" y="${y-2}" width="${w}" height="3" fill="#1b1b1b"/><text x="${x}" y="${y+fs+1}" font-size="${fs}" text-anchor="middle">${d}</text>`}
+function svgNum(x,y,w,a,d,fs){
+ if(!a)return `<text x="${x}" y="${y+fs*0.45}" font-size="${fs*1.3}" text-anchor="middle">${w}</text>`;
+ if(!w)return svgFrac(x,y,a,d,fs);
+ return `<text x="${x-fs*0.75}" y="${y+fs*0.45}" font-size="${fs*1.3}" text-anchor="middle">${w}</text>`+svgFrac(x+fs*0.45,y,a,d,fs)}
+const GCOL=['#7fd6ff','#c9a2ff','#ff9fb6','#9ff0b0','#ffb86b','#a0b8ff'];
+function drawArea(svg,o){
+ const L=o.L,w=o.w||0,a=o.a||0,d=o.d||1;
+ const H=Math.max(1,w+(a>0?1:0));
+ const cw=svg.clientWidth||Math.min(window.innerWidth-40,800),compact=cw<560;
+ let f,ml,mr,mb,maxW,maxHn,rl;const mt=14;
+ if(compact){f=1;ml=40;mr=76;mb=58;maxW=Math.max(380,cw*1.25)-ml-mr;maxHn=380;rl=40}
+ else{f=Math.min(1.9,Math.max(1,620/cw));const g=Math.min(f,1.3);ml=70*g;mr=105*g;mb=56*f;maxW=560;maxHn=300;rl=56*f}
+ const U=Math.max(16,Math.floor(Math.min(maxW/L,(H>1?maxHn:190)/H,150)));
+ const W=L*U,HH=H*U,vw=ml+W+mr,vh=mt+HH+mb,y0=mt+HH,sl=d>1&&d<=16;
+ const fillN=o.fillN==null?1e9:o.fillN,op=p=>o.focus&&o.focus!==p?' opacity=".2"':'';
+ let s='',t='',k=0;
+ for(let r=0;r<H;r++){const yt=y0-(r+1)*U;
+  for(let c=0;c<L;c++){const x=ml+c*U;
+   s+=`<rect x="${x}" y="${yt}" width="${U}" height="${U}" fill="#fff" fill-opacity=".5"/>`;
+   if(r<w){if(k<fillN){s+=`<rect x="${x}" y="${yt}" width="${U}" height="${U}" fill="url(#pg)"${op('green')}/>`;if(o.numBlocks)t+=`<text x="${x+U/2}" y="${yt+U/2+U*0.14}" font-size="${Math.min(U*0.4,40)}" text-anchor="middle" fill="#fff" style="fill:#fff">${k+1}</text>`}k++}
+   else if(a>0){const sh=a*U/d;s+=`<rect x="${x}" y="${yt+U-sh}" width="${U}" height="${sh}" fill="url(#py)"${op('gold')}/>`}}}
+ for(let r=0;r<H;r++){const yt=y0-(r+1)*U;
+  for(let c=0;c<L;c++){const x=ml+c*U;
+   if(sl&&(r>=w||o.sliceAll))for(let j=1;j<d;j++){const yy=yt+U-j*U/d;s+=`<line x1="${x}" y1="${yy}" x2="${x+U}" y2="${yy}" stroke="#1b1b1b" stroke-width="2" stroke-dasharray="6 4" opacity=".7"/>`}
+   s+=`<rect x="${x}" y="${yt}" width="${U}" height="${U}" fill="none" stroke="#1b1b1b" stroke-width="3"/>`}}
+ if((o.num||o.groupBy)&&sl){let n=0;const sH=U/d,fs=Math.max(10,Math.min(sH*0.66,U*0.34*f,24*f)),full=o.groupBy?Math.floor(L*a/o.groupBy):0;
+  for(let c=0;c<L;c++){const x=ml+c*U;
+   for(let r=0;r<H;r++){const yt=y0-(r+1)*U,cnt=r<w?(o.numAll?d:0):a;
+    for(let j=0;j<cnt;j++){n++;const ys=yt+U-(j+1)*sH;
+     if(o.groupBy){const g=Math.ceil(n/o.groupBy);if(g<=full)t+=`<rect x="${x+3}" y="${ys+2}" width="${U-6}" height="${sH-4}" fill="${GCOL[(g-1)%GCOL.length]}"/>`}
+     t+=`<text x="${x+U/2}" y="${ys+sH/2+fs*0.36}" font-size="${fs}" text-anchor="middle">${n}</text>`}}}}
+ const by=y0+12*f;
+ s+=`<path d="M${ml} ${by} v${8*f} H${ml+W} v-${8*f}" fill="none" stroke="#1b1b1b" stroke-width="3"/><text x="${ml+W/2}" y="${by+36*f}" font-size="${22*f}" text-anchor="middle">длина ${L}</text>`;
+ const shH=(w+a/d)*U,rx=ml+W+12;
+ if(shH>0)t+=`<path d="M${rx} ${y0} h9 V${y0-shH} h-9" fill="none" stroke="#c7951a" stroke-width="4"/>`+svgNum(rx+rl,y0-shH/2,w,a,d,20*f);
+ const lx=ml-10;
+ t+=`<path d="M${lx} ${y0} h-8 V${y0-U} h8" fill="none" stroke="#1b1b1b" stroke-width="3"/><text x="${lx-14}" y="${y0-U/2+7*f}" font-size="${20*f}" text-anchor="end">1</text>`;
+ svg.setAttribute('viewBox',`0 0 ${vw} ${vh}`);svg.innerHTML=s+t}
+
+function formula(el,parts){if(!parts){el.classList.add('hidden');return}el.classList.remove('hidden');
+ el.innerHTML=parts.map((p,i)=>`<span class="st ${p==='='||p==='+'?'eq':''}" style="animation-delay:${i*0.04}s">${p}</span>`).join('')}
+function stepper(box,label,obj,key,min,maxF,onCh){
+ const d=document.createElement('div');d.className='stepper';
+ d.innerHTML=`<div class="row"><button class="btn">−</button><b></b><button class="btn">+</button></div><label>${label}</label>`;
+ const [m,p]=d.querySelectorAll('button'),v=d.querySelector('b');
+ m.onclick=()=>{if(obj[key]>min){obj[key]--;onCh()}};
+ p.onclick=()=>{if(obj[key]<maxF()){obj[key]++;onCh()}};
+ box.appendChild(d);return()=>{v.textContent=obj[key]}}
+
+/* ---------- LESSON engine: one idea per step, an action to move on ---------- */
+function Lesson(root,steps,onDone){
+ let i=0,solved=false,timer=null,cur=null,started=false;
+ root.innerHTML=`<div class="dots"></div><div class="say"><svg class="bot"></svg><div class="bubble"></div></div>
+  <svg class="viz"></svg><div class="formula hidden"></div><div class="ask"></div>
+  <div class="nav"><button class="btn back">◀ Назад</button><button class="btn go nextb"></button></div>`;
+ sprite(root.querySelector('.bot'),'bit');
+ const q=k=>root.querySelector(k),v=q('.viz');
+ function render(){
+  clearInterval(timer);const s=steps[i];solved=!s.ask;
+  q('.dots').innerHTML=steps.map((_,k)=>`<i class="${k<i?'past':k===i?'now':''}"></i>`).join('');
+  q('.bubble').innerHTML=s.say;
+  if(s.pic){v.classList.remove('hidden');
+   if(s.anim){cur=s.pic;let n=0;const max=s.pic.L*s.pic.w;drawArea(v,{...s.pic,fillN:0});timer=setInterval(()=>{n++;drawArea(v,{...s.pic,fillN:n});if(n>=max)clearInterval(timer)},300)}
+   else drawArea(v,s.pic);cur=s.pic}else v.classList.add('hidden');
+  formula(q('.formula'),s.formula);
+  const A=q('.ask');
+  if(s.ask){A.innerHTML=`<div class="qq">${s.ask.q}</div><div class="opts">${shuffle(s.ask.options.map((o,k)=>`<button class="btn" data-k="${k}">${o}</button>`)).join('')}</div>`;
+   A.querySelectorAll('.btn').forEach(b=>b.onclick=()=>{if(solved)return;const k=+b.dataset.k;
+    if(k===s.ask.right){b.classList.add('right');solved=true;reward(5,0);q('.bubble').innerHTML=s.ask.ok;
+     if(s.ask.okPic){drawArea(v,s.ask.okPic);cur=s.ask.okPic}if(s.ask.okFormula)formula(q('.formula'),s.ask.okFormula);upd()}
+    else{b.classList.add('wrong');b.disabled=true;q('.bubble').innerHTML=s.ask.no||'Почти! Посмотри на картинку ещё раз и попробуй снова.'}})}
+  else A.innerHTML='';
+  upd();q('.back').disabled=i===0}
+ function upd(){const s=steps[i],nb=q('.nextb');nb.disabled=!solved;nb.textContent=i===steps.length-1?'Урок пройден! Дальше ▶':(s.btn||'Дальше ▶')}
+ q('.nextb').onclick=()=>{if(!solved)return;if(i<steps.length-1){i++;render();root.scrollIntoView({block:'start',behavior:'smooth'})}else{reward(10,2);onDone()}};
+ q('.back').onclick=()=>{if(i>0){i--;render()}};
+ return{start(){i=0;started=true;render()},redraw(){if(cur&&!v.classList.contains('hidden'))drawArea(v,cur)}}}
+
+/* ---------- LESSON CONTENT (numbers differ from the worksheet) ---------- */
+const LESSON1=[
+ {say:'<b>Площадь</b> — это сколько квадратных блоков помещается внутри прямоугольника.<br>Давай заполним прямоугольник 3 на 2.',pic:{L:3,w:2,fillN:0},btn:'▶ Заполнить блоками'},
+ {say:'Считай вместе со мной!',pic:{L:3,w:2,numBlocks:true},anim:true,
+  ask:{q:'Сколько блоков поместилось?',options:[5,6,7,8],right:1,ok:'Да, <b>6</b>! Площадь = длина × ширина = 3 × 2 = 6.',okFormula:['3 × 2','=',chip('g','6 блоков')]}},
+ {say:'А теперь полоса шириной в <b>1 блок</b>.<br>3 × 1 = 3 блока.',pic:{L:3,w:1,numBlocks:true},formula:['3 × 1','=',chip('g','3')],btn:'✂ Разрезать каждый блок на 5'},
+ {say:'Каждый блок разрезан на <b>5</b> одинаковых полосок.<br>Одна полоска — это ' + fr(1,5) + ' блока.',pic:{L:3,w:1,d:5,sliceAll:true},btn:'Оставить по 1 полоске'},
+ {say:'Оставили по <b>одной</b> полоске в каждом блоке. Ширина теперь ' + fr(1,5) + '.',pic:{L:3,a:1,d:5},
+  ask:{q:'Сколько золотых полосок?',options:[1,3,5,15],right:1,ok:'Верно, <b>3</b> полоски!',okPic:{L:3,a:1,d:5,num:true}}},
+ {say:'3 полоски, каждая по ' + fr(1,5) + '. Значит площадь — <b>три пятых</b>.',pic:{L:3,a:1,d:5,num:true},formula:['3 × '+fr(1,5),'=',chip('y','3 полоски по '+fr(1,5)),'=',chip('b',fr(3,5))]},
+ {say:'<b>Секрет:</b><br>верхнее число — <b>сколько полосок</b> взяли;<br>нижнее — <b>на сколько частей</b> резали блок.',pic:{L:4,a:1,d:5,num:true},
+  ask:{q:'Тогда 4 × '+fr(1,5)+' = ?',options:[fr(4,5),fr(4,20),fr(1,20),fr(5,4)],right:0,ok:'Да! 4 полоски по '+fr(1,5)+' = '+fr(4,5)+'. Нижнее число не меняется!',no:'Посчитай золотые полоски на картинке. А на сколько частей резали блок?'}},
+ {say:'А теперь наоборот: площадь = ' + fr(4,7) + ', ширина = ' + fr(1,7) + '. Какая длина?',pic:{L:4,a:1,d:7,num:true},
+  ask:{q:'Длина = ?',options:[1,4,7,fr(1,4)],right:1,ok:fr(4,7)+' — это <b>4</b> полоски по '+fr(1,7)+'. Значит длина 4!',no:'Сколько полосок по '+fr(1,7)+' в площади '+fr(4,7)+'?'}}
+];
+const LESSON2=[
+ {say:'Длина 5. Режем каждый блок на <b>3</b> полоски.',pic:{L:5,w:1,d:3,sliceAll:true},btn:'Оставить по 2 полоски'},
+ {say:'В каждом блоке оставили <b>2 полоски из 3</b>. Ширина = ' + fr(2,3) + '.',pic:{L:5,a:2,d:3},
+  ask:{q:'Сколько золотых полосок в ОДНОМ блоке?',options:[1,2,3],right:1,ok:'Да, по <b>2</b> в каждом блоке.'}},
+ {say:'А теперь во всех блоках.',pic:{L:5,a:2,d:3},
+  ask:{q:'Сколько золотых полосок во ВСЕХ 5 блоках?',options:[2,7,10,15],right:2,ok:'<b>10</b>! 5 блоков × 2 полоски = 10.',okPic:{L:5,a:2,d:3,num:true},no:'В каждом блоке по 2. Блоков 5. Сколько всего?'}},
+ {say:'10 полосок, каждая по ' + fr(1,3) + '.<br>Значит площадь = ' + fr(10,3) + ' (<b>десять третей</b>).',pic:{L:5,a:2,d:3,num:true},
+  formula:['5 × '+fr(2,3),'=','(5 × 2) × '+fr(1,3),'=',chip('y','10 × '+fr(1,3)),'=',chip('b',fr(10,3))]},
+ {say:fr(10,3)+' — больше одного блока!<br><b>3 полоски</b> по '+fr(1,3)+' складываются в <b>1 целый блок</b>. Я покрасил тройки разными цветами.',pic:{L:5,a:2,d:3,groupBy:3},
+  ask:{q:'Сколько ЦЕЛЫХ блоков можно собрать из 10 полосок?',options:[1,2,3,10],right:2,ok:'<b>3</b> целых блока (3 цветные тройки) и ещё <b>1</b> полоска осталась!',no:'Посчитай цветные тройки на картинке.'}},
+ {say:'3 целых и ещё ' + fr(1,3) + ' — это <b>смешанное число</b> <span class="en">(mixed number)</span>.<br>Быстрый способ: 10 ÷ 3 = 3, остаток 1.',pic:{L:5,a:2,d:3,groupBy:3},formula:[fr(10,3),'=',chip('b',mixed(10,3))]},
+ {say:'<b>Правило:</b> умножаем <b>верхнее</b> число на длину, <b>нижнее</b> не трогаем.',pic:{L:3,a:3,d:4,num:true},
+  ask:{q:'3 × '+fr(3,4)+' = ?',options:[fr(9,4),fr(9,12),fr(6,4),fr(3,12)],right:0,ok:'Да! (3 × 3) × '+fr(1,4)+' = '+fr(9,4)+' = '+mixed(9,4),no:'Сколько золотых полосок? На сколько частей резали блок?'}},
+ {say:'<b>Ловушка!</b> Площадь — это всегда <b>умножение</b>, а не сложение.',pic:{L:5,a:2,d:3},
+  ask:{q:'Какое выражение НЕ подходит для площади 5 × '+fr(2,3)+'?',options:['5 + '+fr(2,3),'(5 × 2) × '+fr(1,3),'10 × '+fr(1,3),fr(10,3)],right:0,ok:'Точно! 5 + '+fr(2,3)+' = '+mixed(17,3)+' — это не '+fr(10,3)+'. Тут сложили вместо умножения.',no:'Три выражения равны '+fr(10,3)+'. Найди то, где сложение.'}}
+];
+const LESSON3=[
+ {say:'Ширина бывает <b>больше 1</b>!<br>Сначала целый ряд блоков: 3 × 1 = 3.',pic:{L:3,w:1,numBlocks:true},btn:'Добавить ещё '+'1/4 сверху'},
+ {say:'Ширина = 1 и ещё ' + fr(1,4) + ' = ' + wfr(1,1,4) + '.<br>Прямоугольник стал выше одного блока.',pic:{L:3,w:1,a:1,d:4},btn:'Способ 1: разбить на части'},
+ {say:'<b>Способ 1.</b> Сначала <span style="color:#3d7d22">зелёная</span> часть — целые блоки.',pic:{L:3,w:1,a:1,d:4,focus:'green',numBlocks:true},
+  ask:{q:'Сколько зелёных блоков?',options:[1,3,4],right:1,ok:'Да: 3 × 1 = <b>3</b>.',okFormula:[chip('g','3 × 1 = 3')]}},
+ {say:'Теперь <span style="color:#a77a10">золотая</span> часть: 3 полоски по ' + fr(1,4) + '.',pic:{L:3,w:1,a:1,d:4,focus:'gold',num:true},
+  ask:{q:'3 × '+fr(1,4)+' = ?',options:[fr(1,4),fr(3,4),'3',fr(4,3)],right:1,ok:'Да, <b>'+fr(3,4)+'</b>!',okFormula:[chip('g','3'),'+',chip('y','3 × '+fr(1,4)+' = '+fr(3,4))]}},
+ {say:'Складываем зелёное и золотое!',pic:{L:3,w:1,a:1,d:4},formula:['3 × '+wfr(1,1,4),'=',chip('g','3 × 1'),'+',chip('y','3 × '+fr(1,4)),'=',chip('g','3'),'+',chip('y',fr(3,4)),'=',chip('b',wfr(3,3,4))],btn:'Способ 2: всё на полоски'},
+ {say:'<b>Способ 2.</b> Режем на четвертинки ВСЁ, и зелёное тоже.<br>В одном столбике ' + wfr(1,1,4) + ' = ' + fr(5,4) + ' — это <b>5</b> полосок.',pic:{L:3,w:1,a:1,d:4,sliceAll:true,num:true,numAll:true},
+  ask:{q:'Сколько полосок во всех 3 столбиках?',options:[5,8,12,15],right:3,ok:'<b>15</b> полосок по '+fr(1,4)+' = '+fr(15,4)+' = '+wfr(3,3,4)+'. Ответ тот же!',okFormula:[wfr(1,1,4)+' = '+fr(5,4),'→','3 × '+fr(5,4),'=',chip('b',fr(15,4)),'=',chip('b',wfr(3,3,4))],no:'В каждом столбике 5 полосок. Столбиков 3.'}},
+ {say:'<b>Ошибка Глюка:</b> «3 × '+wfr(1,1,4)+' = '+wfr(3,1,4)+'. Я умножил 3 на 1». Посмотри на золотую часть!',pic:{L:3,w:1,a:1,d:4,focus:'gold'},
+  ask:{q:'Что Глюк забыл?',options:['Умножить 3 на '+fr(1,4),'Сложить 3 и 1','Умножить нижнее число'],right:0,ok:'Да! Каждый блок длины получает свою золотую полоску: 3 + 3 × '+fr(1,4)+' = '+wfr(3,3,4)+'.'}}
+];
+
+/* ---------- question generators (numbers avoid the worksheet) ---------- */
+const bad=(list,arr)=>list.some(x=>x.every((v,i)=>v===arr[i]));
+const opts=list=>shuffle(list.map(([html,ok])=>({html,ok})));
+const G1=[
+ ()=>{let L,d;do{L=rand(2,8);d=rand(2,8)}while(bad([[6,5],[7,3],[9,2],[3,4],[3,5],[4,5]],[L,d]));const f=Math.random()<.35;
+  return{kind:'input',text:`${f?fr(1,d)+' × '+L:L+' × '+fr(1,d)} = ?`,check:s=>eq(parseAns(s),L,d),answer:both(L,d),hint:`Сколько полосок по ${fr(1,d)}? Столько, какая длина. Нижнее число не меняется.`,explain:`${L} полосок по ${fr(1,d)} = ${fr(L,d)}`,viz:{L,a:1,d,num:true}}},
+ ()=>{let L,d;do{L=rand(2,7);d=rand(2,6)}while(L===3&&d===4);
+  return{kind:'mcq',text:'Какое выражение показывает золотую площадь?',showViz:true,viz:{L,a:1,d},options:opts([[`${L} × ${fr(1,d)}`,1],[`${L} + ${fr(1,d)}`,0],[`${L} × ${d}`,0],[fr(1,L*d),0]]),answer:`${L} × ${fr(1,d)}`,hint:'Площадь = длина × ширина. Не плюс!',explain:`Длина ${L}, ширина ${fr(1,d)} → ${L} × ${fr(1,d)} = ${fr(L,d)}`}},
+ ()=>{let d,k;do{d=rand(3,8);k=rand(2,8)}while((d===6&&k===5)||(d===7&&k===4));
+  return{kind:'input',ph:'например 4',text:`Площадь = ${fr(k,d)}, одна сторона = ${fr(1,d)}.<br>Какая длина другой стороны?`,check:s=>eq(parseAns(s),k,1),answer:`${k}`,hint:`${fr(k,d)} — это сколько полосок по ${fr(1,d)}?`,explain:`${fr(k,d)} = ${k} полосок по ${fr(1,d)}. Значит ${k} × ${fr(1,d)}, длина ${k}.`,viz:{L:k,a:1,d,num:true}}}];
+const p2=()=>{let L,d,a;do{L=rand(2,6);d=rand(3,6);a=rand(2,d-1)}while(bad([[4,2,3],[5,3,4],[3,2,5],[5,2,3],[3,3,4]],[L,a,d]));return{L,a,d}};
+const G2=[
+ ()=>{const{L,a,d}=p2(),n=L*a;
+  return{kind:'input',text:`${L} × ${fr(a,d)} = ?`,check:s=>eq(parseAns(s),n,d),answer:both(n,d),hint:`Умножь верхнее число: ${L} × ${a}. Нижнее (${d}) не меняется.`,explain:`(${L} × ${a}) × ${fr(1,d)} = ${n} × ${fr(1,d)} = ${both(n,d)}`,viz:{L,a,d,num:true}}},
+ ()=>{const{L,a,d}=p2(),n=L*a;
+  return{kind:'multi',text:`Прямоугольник: длина ${L}, ширина ${fr(a,d)}.<br>Отметь ВСЕ выражения для его площади.`,viz:{L,a,d},
+   options:opts([[`${L} × ${fr(a,d)}`,1],[`(${L} × ${a}) × ${fr(1,d)}`,1],[`${n} × ${fr(1,d)}`,1],[`${L} + ${fr(a,d)}`,0],[fr(n,d),1],[fr(L+a,d),0]]),
+   answer:'4 зелёных варианта',hint:'Подходят все записи, которые дают одно и то же число полосок. Сложение не подходит!',explain:`Все зелёные = ${fr(n,d)}. ${L} + ${fr(a,d)} — сложение. ${fr(L+a,d)} — тоже сложили ${L} + ${a}.`}},
+ ()=>{const d=rand(2,6),w=rand(1,4),r=rand(1,d-1),n=w*d+r;
+  return{kind:'input',ph:'например 2 1/3',text:`Запиши ${fr(n,d)} как смешанное число.`,tip:'Смешанное число пиши через пробел: 2 1/3',check:s=>{const p=parseAns(s);return !!p&&p.form==='mixed'&&eq(p,n,d)},answer:mixed(n,d),hint:`Сколько раз ${d} помещается в ${n}? Что останется?`,explain:`${n} ÷ ${d} = ${w}, остаток ${r} → ${w} целых и ${fr(r,d)}.`,viz:{L:n,a:1,d,groupBy:d}}}];
+const p3=()=>{let L,w,d,a;do{L=rand(2,5);w=rand(1,2);d=rand(2,5);a=rand(1,d-1)}while(bad([[3,1,2,5],[6,1,1,2],[2,1,3,4],[4,1,2,3],[3,1,1,4]],[L,w,a,d]));return{L,w,a,d}};
+const G3=[
+ ()=>{const{L,w,a,d}=p3(),tot=L*(w*d+a);
+  return{kind:'input',text:`${L} × ${wfr(w,a,d)} = ?`,check:s=>eq(parseAns(s),tot,d),answer:both(tot,d),hint:`Разбей: ${L} × ${w} (зелёное) + ${L} × ${fr(a,d)} (золотое).`,explain:`(${L} × ${w}) + (${L} × ${fr(a,d)}) = ${L*w} + ${fr(L*a,d)} = ${mixed(tot,d)}`,viz:{L,w,a,d}}},
+ ()=>{const{w,a,d}=p3(),imp=w*d+a;
+  return{kind:'input',ph:`?/${d}`,tip:'Одной дробью, например 7/3',text:`${wfr(w,a,d)} = ? (одной дробью)`,check:s=>{const p=parseAns(s);return !!p&&p.form==='fraction'&&eq(p,imp,d)},answer:fr(imp,d),hint:`В одном целом ${d} полосок по ${fr(1,d)}. Сколько полосок всего?`,explain:`${w} целых = ${fr(w*d,d)}. Плюс ${fr(a,d)} → ${fr(imp,d)}.`,viz:{L:1,w,a,d,sliceAll:true,num:true,numAll:true}}},
+ ()=>{let L,d,a;do{L=rand(2,5);d=rand(2,5);a=rand(1,d-1)}while((L===2&&a===3&&d===4)||(L===3&&a===1&&d===4));const tot=L*(d+a);
+  return{kind:'mcq',text:`Глюк говорит: «${L} × ${wfr(1,a,d)} = ${wfr(L,a,d)}. Я умножил ${L} на 1».<br>Что он забыл?`,viz:{L,w:1,a,d},
+   options:opts([[`Умножить ${L} на ${fr(a,d)}`,1],[`Сложить ${L} и 1`,0],[`Умножить нижнее число ${d}`,0]]),answer:`Умножить ${L} на ${fr(a,d)}`,hint:'Нажми «Показать блоки» и посмотри на золотую часть.',explain:`${L} + ${L} × ${fr(a,d)} = ${L} + ${fr(L*a,d)} = <b>${mixed(tot,d)}</b>`}}];
+
+/* ---------- trainer: hint after 1st miss, answer after 2nd ---------- */
+const PASS=4;
+function Trainer(root,plan,gens,key,nextWorld){
+ let i,score,res,q,sel,answered,tries;
+ const el=k=>root.querySelector(k);
+ function build(){
+  root.innerHTML=`<div class="tr-top"><b class="tq"></b><div class="pips"></div></div>
+  <div class="q"></div><svg class="viz qviz hidden"></svg><div class="aa"></div><div class="fb"></div>
+  <div class="ctl"><button class="btn go chk">✔ Проверить</button><button class="btn pic">👁 Показать блоки</button><button class="btn go nxt hidden">Дальше ▶</button></div>`;
+  el('.chk').onclick=check;el('.nxt').onclick=()=>{i++;next()};
+  el('.pic').onclick=showPic}
+ function showPic(){el('.qviz').classList.remove('hidden');el('.pic').classList.add('hidden')}
+ function pips(){el('.pips').innerHTML=plan.map((_,k)=>`<i class="${res[k]===true?'ok':res[k]===false?'no':k===i?'now':''}"></i>`).join('')}
+ function msg(c,h){const f=el('.fb');f.className='fb '+c;f.innerHTML=h}
+ function next(){
+  if(i>=plan.length)return finish();
+  q=gens[plan[i]]();answered=false;tries=0;sel=new Set();
+  el('.tq').textContent=`Вопрос ${i+1} из ${plan.length}`;pips();
+  el('.q').innerHTML=q.text;
+  const v=el('.qviz');v.classList.toggle('hidden',!q.showViz);if(q.viz)drawArea(v,q.viz);
+  el('.pic').classList.toggle('hidden',!q.viz||!!q.showViz);
+  el('.fb').className='fb';el('.chk').classList.remove('hidden');el('.nxt').classList.add('hidden');
+  const A=el('.aa');
+  if(q.kind==='input'){
+   A.innerHTML=`<input class="ans-in" autocomplete="off" inputmode="none" placeholder="${q.ph||'например 7/3'}"><div class="keys">${KEYS.map(k=>`<button class="btn k">${k}</button>`).join('')}</div><div class="tip">${q.tip||'Дробь: 7/3. Смешанное число — через пробел: 2 1/3'}</div>`;
+   const inp=A.querySelector('input');
+   inp.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();answered?(i++,next()):check()}});
+   A.querySelectorAll('.k').forEach(b=>b.onclick=()=>{if(answered)return;const k=b.textContent;inp.value=k==='⌫'?inp.value.slice(0,-1):inp.value+(k==='␣'?' ':k)});
+  }else{
+   A.innerHTML=`<div class="opts col">${q.options.map((o,k)=>`<button class="btn opt" data-i="${k}">${o.html}</button>`).join('')}</div>`+(q.kind==='multi'?'<div class="tip">Отметь ВСЕ подходящие, потом «Проверить».</div>':'');
+   A.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{if(answered)return;const k=+b.dataset.i;
+    if(q.kind==='mcq'){sel.clear();A.querySelectorAll('.opt').forEach(x=>x.classList.remove('sel'))}
+    if(sel.has(k)){sel.delete(k);b.classList.remove('sel')}else{sel.add(k);b.classList.add('sel')}})}}
+ function check(){
+  if(answered)return;let ok;
+  if(q.kind==='input'){const v=el('.ans-in').value;if(!v.trim())return msg('no','Сначала впиши ответ 🙂');ok=q.check(v)}
+  else{if(!sel.size)return msg('no','Сначала выбери ответ 🙂');ok=q.options.every((o,k)=>!!o.ok===sel.has(k))}
+  if(!ok&&tries===0){tries=1;if(q.viz)showPic();msg('hint',`<b>Почти!</b> 💡 ${q.hint}<br>Попробуй ещё раз.`);
+   if(q.kind!=='input'){sel.clear();el('.aa').querySelectorAll('.opt').forEach(b=>b.classList.remove('sel'))}return}
+  answered=true;res[i]=ok;
+  if(q.kind!=='input')el('.aa').querySelectorAll('.opt').forEach((b,k)=>{b.classList.remove('sel');if(q.options[k].ok)b.classList.add('right');else if(sel.has(k))b.classList.add('wrong')});
+  if(ok){score++;reward(10,tries?0:1)}
+  msg(ok?'ok':'no',(ok?`<b>${pick(PRAISE)}</b>${tries?'':' +1<span class="gem"></span>'}`:`<b>Не страшно!</b> Ответ: ${q.answer}`)+`<div>${q.explain}</div>`);
+  if(q.viz)showPic();
+  el('.chk').classList.add('hidden');el('.nxt').classList.remove('hidden');pips()}
+ function finish(){
+  const pass=score>=PASS;
+  if(pass&&!S.done[key]){S.done[key]=true;reward(30,5)}
+  root.innerHTML=`<div class="result ${pass?'win':''}"><div class="big">${pass?'МИР ПРОЙДЕН! 🏆':'Почти получилось!'}</div><div class="score">${score} из ${plan.length}</div><p>${pass?'Теперь сделай эту часть в листке 📝':`Нужно ${PASS} из ${plan.length}. Пройди урок ещё раз — и снова в бой!`}</p>
+  <div class="ctl" style="justify-content:center">${pass?`<button class="btn go nw">${nextWorld==='boss'?'К боссу ▶':'Следующий мир ▶'}</button>`:''}<button class="btn ${pass?'':'go'} ag">↻ Ещё раз</button><button class="btn" data-go="home">◀ Карта</button></div></div>`;
+  root.querySelector('.ag').onclick=start;
+  const nw=root.querySelector('.nw');if(nw)nw.onclick=()=>go(nextWorld)}
+ function start(){i=0;score=0;res=[];build();next()}
+ return{start}}
+
+/* ---------- WORLD builder: Урок → Попробуй сам → Тренировка ---------- */
+const WORLDS={};
+function buildWorld(n,cfg){
+ const sec=$('#world-'+n);
+ sec.innerHTML=`<div class="panel topbar"><button class="btn" data-go="home">◀ Карта</button><h2>${cfg.title}</h2><span class="tag">📝 Листок: ${cfg.sheet}</span></div>
+ <div class="phases"><button class="btn" data-ph="lesson">1 · Урок</button><button class="btn" data-ph="play">2 · <span class="ph-l">Попробуй сам</span><span class="ph-s">Сам</span></button><button class="btn" data-ph="train">3 · <span class="ph-l">Тренировка</span><span class="ph-s">Тест</span></button></div>
+ <div class="panel ph" data-ph="lesson"><div class="lesson"></div></div>
+ <div class="panel ph" data-ph="play">
+  <div class="say"><svg class="bot"></svg><div class="bubble sb"></div></div>
+  <div class="controls"></div><svg class="viz sv"></svg><div class="formula sf"></div><div class="toggles"></div>
+  <div class="nav"><span></span><button class="btn go totrain">К тренировке ▶</button></div></div>
+ <div class="panel ph" data-ph="train"><div class="trainer"></div></div>`;
+ sprite(sec.querySelector('.bot'),'bit');
+ const W={sec,phase:'lesson'};WORLDS[n]=W;
+ W.lesson=Lesson(sec.querySelector('.lesson'),cfg.lesson,()=>setPhase(n,'play'));
+ W.trainer=Trainer(sec.querySelector('.trainer'),cfg.plan,cfg.gens,'w'+n,n<3?'world-'+(n+1):'boss');
+ W.sandbox=cfg.sandbox(sec);
+ sec.querySelectorAll('.phases .btn').forEach(b=>b.onclick=()=>setPhase(n,b.dataset.ph));
+ sec.querySelector('.totrain').onclick=()=>setPhase(n,'train');
+ W.lesson.start();W.trainer.start()}
+function setPhase(n,ph){const W=WORLDS[n];W.phase=ph;
+ W.sec.querySelectorAll('.ph').forEach(p=>p.classList.toggle('hidden',p.dataset.ph!==ph));
+ W.sec.querySelectorAll('.phases .btn').forEach(b=>b.classList.toggle('on',b.dataset.ph===ph));
+ if(ph==='play')W.sandbox();if(ph==='lesson')W.lesson.redraw();window.scrollTo(0,0)}
+
+/* sandboxes */
+function sandbox1(sec){const st={L:5,d:3,full:false},ups=[],c=sec.querySelector('.controls');
+ const r=()=>{const{L,d,full}=st;ups.forEach(f=>f());ro.innerHTML='ширина = '+(full?'1':fr(1,d));
+  drawArea(sec.querySelector('.sv'),full?{L,w:1,d,sliceAll:true}:{L,a:1,d,num:true});
+  formula(sec.querySelector('.sf'),full?[`${L} × 1`,'=',chip('g',`${L}`)]:[`${L} × ${fr(1,d)}`,'=',chip('y',`${L} полосок`),'=',chip('b',fr(L,d))].concat(L>=d?['=',chip('b',mixed(L,d))]:[]));
+  tg.textContent=full?'✂ Разрезать':'◼ Целые блоки';
+  sec.querySelector('.sb').innerHTML='Меняй числа кнопками <b>−</b> и <b>+</b>. Сначала угадай ответ в уме, потом посмотри!'};
+ ups.push(stepper(c,'длина',st,'L',1,()=>8,r));ups.push(stepper(c,'режем на',st,'d',2,()=>8,r));
+ const ro=document.createElement('div');ro.className='readout';c.appendChild(ro);
+ const tg=document.createElement('button');tg.className='btn goldb';sec.querySelector('.toggles').appendChild(tg);tg.onclick=()=>{st.full=!st.full;r()};
+ return r}
+function sandbox2(sec){const st={L:4,d:5,a:3,num:true,grp:false},ups=[],c=sec.querySelector('.controls');
+ const r=()=>{st.a=Math.min(st.a,st.d-1);const{L,d,a}=st,n=L*a;ups.forEach(f=>f());ro.innerHTML='ширина = '+fr(a,d);
+  drawArea(sec.querySelector('.sv'),st.grp?{L,a,d,groupBy:d}:{L,a,d,num:st.num});
+  formula(sec.querySelector('.sf'),[`${L} × ${fr(a,d)}`,'=',`(${L} × ${a}) × ${fr(1,d)}`,'=',chip('y',`${n} × ${fr(1,d)}`),'=',chip('b',fr(n,d))].concat(n>=d?['=',chip('b',mixed(n,d))]:[]));
+  tg.textContent=st.grp?'🔢 Просто считать':'🎨 Собрать целые блоки';
+  sec.querySelector('.sb').innerHTML=`В каждом блоке <b>${a}</b> полоски. ${L} × ${a} = <b>${n}</b> полосок по ${fr(1,d)}.`};
+ ups.push(stepper(c,'длина',st,'L',1,()=>6,r));ups.push(stepper(c,'режем на',st,'d',2,()=>6,r));ups.push(stepper(c,'берём',st,'a',1,()=>st.d-1,r));
+ const ro=document.createElement('div');ro.className='readout';c.appendChild(ro);
+ const tg=document.createElement('button');tg.className='btn goldb';sec.querySelector('.toggles').appendChild(tg);tg.onclick=()=>{st.grp=!st.grp;r()};
+ return r}
+function sandbox3(sec){const st={L:2,w:1,d:3,a:2,view:1},ups=[],c=sec.querySelector('.controls');
+ const r=()=>{st.a=Math.min(st.a,st.d-1);const{L,w,d,a,view}=st,imp=w*d+a,tot=L*imp;ups.forEach(f=>f());ro.innerHTML='ширина = '+wfr(w,a,d);
+  const v=sec.querySelector('.sv'),fm=sec.querySelector('.sf');
+  if(view===1){drawArea(v,{L,w,a,d});formula(fm,[`${L} × ${wfr(w,a,d)}`,'=',chip('g',`${L} × ${w}`),'+',chip('y',`${L} × ${fr(a,d)}`),'=',chip('g',L*w),'+',chip('y',fr(L*a,d)),'=',chip('b',mixed(tot,d))]);
+   sec.querySelector('.sb').innerHTML='<b>Способ 1:</b> зелёное + золотое.'}
+  else{drawArea(v,{L,w,a,d,sliceAll:true,num:true,numAll:true});formula(fm,[chip('y',`${wfr(w,a,d)} = ${fr(imp,d)}`),`→ ${L} × ${fr(imp,d)}`,'=',chip('b',fr(tot,d))].concat(tot>=d?['=',chip('b',mixed(tot,d))]:[]));
+   sec.querySelector('.sb').innerHTML=`<b>Способ 2:</b> всё на полоски. ${L} × ${imp} = <b>${tot}</b> полосок.`}
+  b1.className='btn '+(view===1?'goldb':'');b2.className='btn '+(view===2?'goldb':'')};
+ ups.push(stepper(c,'длина',st,'L',1,()=>5,r));ups.push(stepper(c,'целых',st,'w',1,()=>2,r));ups.push(stepper(c,'режем на',st,'d',2,()=>5,r));ups.push(stepper(c,'берём',st,'a',1,()=>st.d-1,r));
+ const ro=document.createElement('div');ro.className='readout';c.appendChild(ro);
+ const tgs=sec.querySelector('.toggles'),b1=document.createElement('button'),b2=document.createElement('button');
+ b1.textContent='Способ 1 · Разбить';b2.textContent='Способ 2 · Все полоски';tgs.append(b1,b2);b1.onclick=()=>{st.view=1;r()};b2.onclick=()=>{st.view=2;r()};
+ return r}
+
+buildWorld(1,{title:'Мир 1 · Тонкие полоски',sheet:'Part A, №1–3',lesson:LESSON1,plan:[0,1,0,2,0],gens:G1,sandbox:sandbox1});
+buildWorld(2,{title:'Мир 2 · Золотые кусочки',sheet:'Part B, №4–6',lesson:LESSON2,plan:[0,1,2,0,1],gens:G2,sandbox:sandbox2});
+buildWorld(3,{title:'Мир 3 · Высокие постройки',sheet:'Part C, №7–10',lesson:LESSON3,plan:[0,1,0,2,0],gens:G3,sandbox:sandbox3});
+
+/* ---------- BOSS ---------- */
+const TARGETS=[[8,3],[18,5],[20,7],[16,3],[9,4],[10,3]];
+const DEN={3:'третей',4:'четвертей',5:'пятых',7:'седьмых'};
+const B={t:null,n:2,found:{},hint:0};let upB=[];
+function divisors(n){const r=[];for(let k=1;k<=n;k++)if(n%k===0)r.push(k);return r}
+function newBoss(){B.t=pick(TARGETS);B.n=2;B.found={};B.hint=0;$('#bin').value='';$('#bfb').className='fb';$('#vb').classList.add('hidden');$('#bnew').classList.add('hidden');renderBoss()}
+function renderBoss(){
+ const[T,D]=B.t,cnt=Object.keys(B.found).length;upB.forEach(f=>f());
+ $('#bq').innerHTML=cnt>=3?'ПОБЕЖДЁН! 🏆':`Площадь = ${chip('y',fr(T,D))}<br><span style="font-size:19px">Одна сторона — ЦЕЛОЕ число. Найди 3 разных прямоугольника!</span>`;
+ $('#bhp').innerHTML=[0,1,2].map(k=>`<i class="${k<cnt?'lost':''}"></i>`).join('');
+ $('#bsay').innerHTML=`Пример: если целая сторона = <b>1</b>, то другая = ${fr(T,D)}, ведь 1 × ${fr(T,D)} = ${fr(T,D)}.<br>Выбери целую сторону кнопками и найди другую сторону.`;
+ $('#btab').innerHTML=Object.entries(B.found).map(([n,f])=>`<tr><td>${n}</td><td>${f}</td><td>${n} × ${f} = ${fr(T,D)}</td></tr>`).join('')||`<tr><td colspan="3" style="opacity:.6">пока пусто</td></tr>`}
+function bossMsg(c,h){const f=$('#bfb');f.className='fb '+c;f.innerHTML=h}
+$('#bcheck').onclick=()=>{
+ const[T,D]=B.t,n=B.n,p=parseAns($('#bin').value);
+ if(Object.keys(B.found).length>=3)return;
+ if(!p)return bossMsg('no','Впиши дробь, например 4/3 🙂');
+ const g=gcd(T,D*n),nn=T/g,dd=D*n/g;
+ if(p.n*n*D===T*p.d){
+  if(B.found[n])return bossMsg('no',`Прямоугольник со стороной ${n} уже есть. Выбери другую целую сторону!`);
+  B.found[n]=p.form==='mixed'?mixed(p.n,p.d):fr(p.n,p.d);reward(15,2);
+  $('#vb').classList.remove('hidden');drawArea($('#vb'),{L:n,w:Math.floor(nn/dd),a:nn%dd,d:dd});
+  const cnt=Object.keys(B.found).length;
+  if(cnt>=3){if(!S.done.boss){S.done.boss=true;reward(50,10)}bossMsg('ok',`<b>БОСС ПОБЕЖДЁН! 🏆</b> +10<span class="gem"></span><br>Секрет: подходит любая целая сторона. Другая сторона = ${fr(T,D)} ÷ целую сторону.`);$('#bnew').classList.remove('hidden')}
+  else bossMsg('ok',`<b>ПОПАЛ!</b> ${n} × ${B.found[n]} = ${fr(T,D)}. Осталось ${3-cnt}!`);
+  $('#bin').value='';
+ }else bossMsg('no',`<b>Мимо!</b> ${n} × ${fr(p.n,p.d)} = ${fr(n*p.n,p.d)}, а нужно ${fr(T,D)}.<br>Подумай: ${n} × ? = ${T} ${DEN[D]||'долей'}.`);
+ renderBoss()};
+$('#bhint').onclick=()=>{
+ const[T,D]=B.t,n=B.n;B.hint++;
+ if(B.hint===1)bossMsg('hint',`💡 Выбери целую сторону, на которую ${T} делится без остатка: <b>${divisors(T).join(', ')}</b>.`);
+ else bossMsg('hint',`💡 ${n} × ${fr('?',D)} = ${fr(T,D)} → ${n} × ? = ${T}.${T%n===0?` Значит ? = ${T/n}, сторона = ${fr(T/n,D)}`:' Выбери сторону из списка выше.'}`)};
+$('#bnew').onclick=newBoss;
+(function(){upB.push(stepper($('#cb'),'целая сторона',B,'n',1,()=>12,()=>{B.hint=0;renderBoss()}));
+ $('#bkeys').innerHTML=KEYS.map(k=>`<button class="btn">${k}</button>`).join('');
+ $('#bkeys').querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=b.textContent,i=$('#bin');i.value=k==='⌫'?i.value.slice(0,-1):i.value+(k==='␣'?' ':k)});
+ $('#bin').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#bcheck').click()}});
+ newBoss()})();
+
+/* ---------- routing ---------- */
+document.querySelectorAll('[data-sprite]').forEach(s=>sprite(s,s.dataset.sprite));
+const SCREENS=['home','world-1','world-2','world-3','boss'];
+function show(){const id=SCREENS.includes(location.hash.slice(1))?location.hash.slice(1):'home';
+ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===id));window.scrollTo(0,0);
+ const m=id.match(/world-(\d)/);if(m)setPhase(+m[1],WORLDS[+m[1]].phase)}
+function go(id){if(location.hash==='#'+id)show();else location.hash=id}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-go]');if(b){e.preventDefault();go(b.dataset.go)}});
+window.addEventListener('hashchange',show);
+$('#reset').onclick=()=>{S.xp=0;S.gems=0;S.done={};save();hud()};
+let rz;window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{const m=location.hash.match(/world-(\d)/);if(m){const W=WORLDS[+m[1]];if(W.phase==='play')W.sandbox();if(W.phase==='lesson')W.lesson.redraw()}},200)});
+hud();show();
+</script>
+</body>
+</html>
